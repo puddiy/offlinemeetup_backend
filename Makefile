@@ -28,6 +28,14 @@ test: ## Запустить Unit-тесты (с race-детектором — к
 lint: ## Запустить линтер (требуется golangci-lint)
 	golangci-lint run
 
+.PHONY: ci
+ci: ## Гейт: что должно пройти, прежде чем считать работу законченной
+	@test -z "$$(gofmt -l .)" || { echo "gofmt needed:"; gofmt -l .; exit 1; }
+	go vet ./...
+	@if command -v golangci-lint >/dev/null 2>&1; then golangci-lint run; \
+	 else echo "(golangci-lint не установлен — шаг пропущен)"; fi
+	go test -race ./...
+
 .PHONY: swag
 swag: ## Сгенерировать Swagger документацию
 	go run github.com/swaggo/swag/cmd/swag@latest init -g $(CMD) -d ./

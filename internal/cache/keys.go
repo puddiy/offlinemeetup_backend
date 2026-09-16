@@ -40,6 +40,12 @@ const (
 	// account-enumeration oracle, this time via forgot-password +
 	// reset-password. See task-6 report, fix round 2.
 	resetAttemptsPrefix = "auth:reset_attempts:"
+
+	// adminSessionPrefix — сессии админ-панели. Ключ строится по SHA-256
+	// от токена из cookie, а не по самому токену: дамп Redis тогда не даёт
+	// готовых к использованию сессий (тот же приём, что у refresh_tokens,
+	// где в БД лежит только хэш).
+	adminSessionPrefix = "admin:session:"
 )
 
 // UserChatsKey возвращает ключ со списком чатов пользователя.
@@ -136,4 +142,10 @@ func MailResetQuotaKey(email string) string {
 // email (см. комментарий у resetAttemptsPrefix).
 func ResetAttemptsKey(email string) string {
 	return resetAttemptsPrefix + strings.ToLower(strings.TrimSpace(email))
+}
+
+// AdminSessionKey — ключ сессии админ-панели. tokenHash — hex-строка SHA-256
+// от значения cookie; сырой токен в Redis не попадает никогда.
+func AdminSessionKey(tokenHash string) string {
+	return adminSessionPrefix + tokenHash
 }

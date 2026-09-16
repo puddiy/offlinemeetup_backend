@@ -169,3 +169,29 @@ func TestLoad_MailSMTPPortDefaultsTo587(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "587", cfg.MailSMTPPort)
 }
+
+func TestLoadAdminSessionDefaults(t *testing.T) {
+	t.Setenv("DB_DSN", "postgres://u:p@localhost:5432/db?sslmode=disable")
+	t.Setenv("TELEGRAM_BOT_TOKEN", "test-token")
+	t.Setenv("JWT_SECRET_KEY", "test-secret")
+	t.Setenv("APP_ENV", "local")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 8*time.Hour, cfg.AdminSessionTTL)
+	require.Equal(t, 24*time.Hour, cfg.AdminSessionMaxTTL)
+}
+
+func TestLoadAdminSessionOverride(t *testing.T) {
+	t.Setenv("DB_DSN", "postgres://u:p@localhost:5432/db?sslmode=disable")
+	t.Setenv("TELEGRAM_BOT_TOKEN", "test-token")
+	t.Setenv("JWT_SECRET_KEY", "test-secret")
+	t.Setenv("APP_ENV", "local")
+	t.Setenv("ADMIN_SESSION_TTL", "30m")
+	t.Setenv("ADMIN_SESSION_MAX_TTL", "4h")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 30*time.Minute, cfg.AdminSessionTTL)
+	require.Equal(t, 4*time.Hour, cfg.AdminSessionMaxTTL)
+}

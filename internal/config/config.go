@@ -92,6 +92,15 @@ type Config struct {
 	// подсчёта (LOGIN_FAIL_WINDOW, дефолт 15m).
 	LoginFailLimit  int
 	LoginFailWindow time.Duration
+
+	// AdminSessionTTL — окно ПРОСТОЯ сессии админ-панели (ADMIN_SESSION_TTL,
+	// дефолт 8h): каждый запрос продлевает его заново.
+	// AdminSessionMaxTTL — АБСОЛЮТНЫЙ потолок с момента входа
+	// (ADMIN_SESSION_MAX_TTL, дефолт 24h), который продление не двигает.
+	// Нужны оба: без потолка активно используемая сессия жила бы вечно, и
+	// украденная cookie не протухала бы никогда.
+	AdminSessionTTL    time.Duration
+	AdminSessionMaxTTL time.Duration
 }
 
 // durEnv reads a duration from env (e.g. "200ms", "5m"); on an empty or
@@ -183,6 +192,8 @@ func Load() (*Config, error) {
 	cfg.EmailSendQuotaPerHour = intEnv("EMAIL_SEND_QUOTA_PER_HOUR", 5)
 	cfg.LoginFailLimit = intEnv("LOGIN_FAIL_LIMIT", 10)
 	cfg.LoginFailWindow = durEnv("LOGIN_FAIL_WINDOW", 15*time.Minute)
+	cfg.AdminSessionTTL = durEnv("ADMIN_SESSION_TTL", 8*time.Hour)
+	cfg.AdminSessionMaxTTL = durEnv("ADMIN_SESSION_MAX_TTL", 24*time.Hour)
 
 	if origins := os.Getenv("WS_ALLOWED_ORIGINS"); origins != "" {
 		for o := range strings.SplitSeq(origins, ",") {

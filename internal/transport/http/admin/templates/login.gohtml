@@ -1,0 +1,19 @@
+{{define "login"}}{{template "layout" .}}{{end}}
+{{define "content"}}
+<div class="login-wrap">
+    <div class="card">
+        <h2 style="margin-top:0">Вход в админку</h2>
+        <form method="post" action="/admin/login">
+            <label>
+                <span>Email</span>
+                <input type="email" name="email" autocomplete="username" required autofocus>
+            </label>
+            <label>
+                <span>Пароль</span>
+                <input type="password" name="password" autocomplete="current-password" required>
+            </label>
+            <button type="submit">Войти</button>
+        </form>
+    </div>
+</div>
+{{end}}

@@ -1,0 +1,58 @@
+{{define "layout"}}<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{.Title}} — Meetuper Admin</title>
+    <script src="/admin/static/htmx.min.js" defer></script>
+    <style>
+        :root { --bg:#f6f7f9; --fg:#1b1f24; --muted:#6b7280; --line:#e3e6ea; --accent:#2563eb; --danger:#b42318; }
+        * { box-sizing: border-box; }
+        body { margin:0; background:var(--bg); color:var(--fg);
+               font:15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        header { display:flex; align-items:center; justify-content:space-between;
+                 padding:12px 20px; background:#fff; border-bottom:1px solid var(--line); }
+        header a { color:var(--fg); text-decoration:none; margin-right:16px; }
+        header a:hover { color:var(--accent); }
+        .who { color:var(--muted); font-size:13px; }
+        main { max-width:1080px; margin:24px auto; padding:0 20px; }
+        .card { background:#fff; border:1px solid var(--line); border-radius:8px; padding:20px; }
+        .error { color:var(--danger); background:#fef3f2; border:1px solid #fecdca;
+                 border-radius:6px; padding:10px 12px; margin-bottom:16px; }
+        .flash { color:#05603a; background:#ecfdf3; border:1px solid #abefc6;
+                 border-radius:6px; padding:10px 12px; margin-bottom:16px; }
+        label { display:block; margin-bottom:12px; }
+        label span { display:block; margin-bottom:4px; font-size:13px; color:var(--muted); }
+        input[type=email], input[type=password], input[type=text] {
+            width:100%; padding:9px 10px; border:1px solid var(--line);
+            border-radius:6px; font-size:15px; }
+        button { background:var(--accent); color:#fff; border:0; border-radius:6px;
+                 padding:9px 18px; font-size:15px; cursor:pointer; }
+        button:hover { filter:brightness(1.08); }
+        .login-wrap { max-width:380px; margin:80px auto; }
+        table { width:100%; border-collapse:collapse; }
+        th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); }
+        th { font-size:13px; color:var(--muted); font-weight:600; }
+    </style>
+</head>
+<body>
+{{if .Admin}}
+<header>
+    <nav>
+        <a href="/admin/">Дашборд</a>
+    </nav>
+    <div class="who">
+        {{.Admin.Email}} · {{.Admin.Role}}
+        <form method="post" action="/admin/logout" style="display:inline">
+            <button type="submit" style="background:none;color:var(--muted);padding:0 0 0 12px">Выйти</button>
+        </form>
+    </div>
+</header>
+{{end}}
+<main>
+    {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+    {{if .Flash}}<div class="flash">{{.Flash}}</div>{{end}}
+    {{block "content" .}}{{end}}
+</main>
+</body>
+</html>{{end}}

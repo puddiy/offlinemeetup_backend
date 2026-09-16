@@ -1,0 +1,12 @@
+{{define "dashboard"}}{{template "layout" .}}{{end}}
+{{define "content"}}
+<div class="card">
+    <h2 style="margin-top:0">Дашборд</h2>
+    <p style="color:var(--muted)">
+        Вы вошли как <strong>{{.Admin.Email}}</strong> (роль: {{.Admin.Role}}).
+    </p>
+    <p style="color:var(--muted)">
+        Разделы модерации, пользователей и аналитики появятся в следующих милстоунах.
+    </p>
+</div>
+{{end}}

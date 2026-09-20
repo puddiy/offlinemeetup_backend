@@ -44,6 +44,11 @@ swag: ## Сгенерировать Swagger документацию
 migration: ## Создать новую миграцию: make migration NAME=create_meetups_table
 	go run github.com/pressly/goose/v3/cmd/goose@latest -dir migrations create $(NAME) sql
 
+.PHONY: admin-create
+admin-create: ## Создать администратора: make admin-create EMAIL=a@b.c ROLE=admin
+	@test -n "$(EMAIL)" || { echo "Укажи EMAIL=..."; exit 1; }
+	go run ./cmd/adminctl -email=$(EMAIL) -role=$(or $(ROLE),admin)
+
 # Docker
 
 .PHONY: up

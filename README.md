@@ -150,6 +150,10 @@ PRESENCE_TTL=2m
 CACHE_TIMEOUT=200ms
 TRUST_PROXY_HEADERS=false          # trust X-Forwarded-For/X-Real-IP only behind a trusted proxy
 WS_ALLOWED_ORIGINS=http://localhost:3000
+
+# Admin panel
+ADMIN_SESSION_TTL=8h              # session idle window (extended on each request)
+ADMIN_SESSION_MAX_TTL=24h         # absolute cap from login time
 ```
 
 ### Running with Docker (recommended)

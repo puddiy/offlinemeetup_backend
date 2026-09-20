@@ -120,6 +120,10 @@ PRESENCE_TTL=2m
 CACHE_TIMEOUT=200ms
 TRUST_PROXY_HEADERS=false          # доверять X-Forwarded-For/X-Real-IP только за доверенным прокси
 WS_ALLOWED_ORIGINS=http://localhost:3000
+
+# Админ-панель
+ADMIN_SESSION_TTL=8h              # окно простоя сессии (продлевается каждым запросом)
+ADMIN_SESSION_MAX_TTL=24h         # абсолютный потолок от момента входа
 ```
 
 ### Запуск в Docker (рекомендуемый)

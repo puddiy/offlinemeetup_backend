@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/config"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/domain"
@@ -74,11 +75,14 @@ func (h *Handler) clearSessionCookie(w http.ResponseWriter) {
 // где он нужнее всего.
 func (h *Handler) clientIP(r *http.Request) string {
 	if h.cfg.TrustProxyHeaders {
-		if ip := r.Header.Get("X-Real-IP"); ip != "" {
+		if ip := strings.TrimSpace(r.Header.Get("X-Real-IP")); ip != "" {
 			return ip
 		}
+		// Цепочка "client, proxy1, proxy2": клиент — первый элемент. Логика
+		// та же, что в RateLimiter, чтобы аудит и лимит видели один и тот же IP.
 		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-			return fwd
+			first, _, _ := strings.Cut(fwd, ",")
+			return strings.TrimSpace(first)
 		}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)

@@ -19,6 +19,11 @@ const loginPath = "/admin/login"
 func Routes(h *Handler, rdb *redis.Client, log *slog.Logger, cfg *config.Config) chi.Router {
 	r := chi.NewRouter()
 
+	// Проверка Origin — один choke point на всё поддерево /admin, а не по
+	// группам: новая группа, где про неё забыли, иначе молча осталась бы без
+	// второго рубежа CSRF. Безопасные методы (в т.ч. GET статики) проходят.
+	r.Use(mw.RequireSameOrigin(log))
+
 	// Статика (HTMX) — до авторизации: это не секрет, а отдавать её только
 	// залогиненным значило бы ломать страницу входа.
 	//
@@ -31,17 +36,17 @@ func Routes(h *Handler, rdb *redis.Client, log *slog.Logger, cfg *config.Config)
 	// Форма входа. Лимит по IP — тот же RateLimiter, что у /auth/*, в своей
 	// области "admin_login": перебор пароля админа стоит дороже, чем
 	// пользовательского, поэтому порог ниже (10/мин против 20/мин).
-	r.Group(func(r chi.Router) {
-		r.Use(mw.RequireSameOrigin(log))
-		r.Use(mw.RateLimiter(rdb, log, "admin_login", 10, time.Minute, cfg.TrustProxyHeaders))
-
-		r.Get("/login", h.LoginForm)
-		r.Post("/login", h.LoginSubmit)
-	})
+	//
+	// Лимит стоит ТОЛЬКО на POST: бюджет защищает от перебора пароля, и
+	// показ формы (GET) или редирект после выхода не должны его расходовать.
+	// За Traefik при TRUST_PROXY_HEADERS=false все клиенты делят один IP-бакет,
+	// так что 10 GET в минуту иначе положили бы всю панель 429-ми.
+	r.Get("/login", h.LoginForm)
+	r.With(mw.RateLimiter(rdb, log, "admin_login", 10, time.Minute, cfg.TrustProxyHeaders)).
+		Post("/login", h.LoginSubmit)
 
 	// Всё остальное — только с живой сессией.
 	r.Group(func(r chi.Router) {
-		r.Use(mw.RequireSameOrigin(log))
 		r.Use(mw.AdminSession(h.auth, loginPath))
 
 		r.Get("/", h.Dashboard)

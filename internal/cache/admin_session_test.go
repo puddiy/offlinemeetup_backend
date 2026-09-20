@@ -94,3 +94,15 @@ func TestAdminSessionDelete(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, found)
 }
+
+func TestAdminSessionGetCorruptValueIsDeleted(t *testing.T) {
+	mr, store := newTestAdminSessionStore(t)
+	defer mr.Close()
+
+	require.NoError(t, mr.Set(AdminSessionKey("h"), "{not json"))
+
+	_, found, err := store.Get(context.Background(), "h")
+	require.NoError(t, err)
+	require.False(t, found)
+	require.False(t, mr.Exists(AdminSessionKey("h")), "битый ключ должен быть удалён")
+}

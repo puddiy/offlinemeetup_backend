@@ -63,6 +63,11 @@ func (s *RedisAdminSessionStore) Get(ctx context.Context, tokenHash string) (Adm
 		// Битое значение лечим как отсутствие сессии: пользователь просто
 		// перелогинится. Возвращать 500 на мусор в кэше смысла нет.
 		s.log.Error("admin session unmarshal failed", slog.Any("error", err))
+		// Ключ удаляем, иначе мусор пролежит до TTL и будет ронять каждый
+		// запрос по нему; best-effort — ответ «не найдено» от этого не зависит.
+		if delErr := s.rdb.Del(ctx, AdminSessionKey(tokenHash)).Err(); delErr != nil {
+			s.log.Error("admin session corrupt key delete failed", slog.Any("error", delErr))
+		}
 		return AdminSession{}, false, nil
 	}
 	return sess, true, nil

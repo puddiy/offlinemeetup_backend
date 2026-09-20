@@ -2,6 +2,7 @@ package admin
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -35,7 +36,11 @@ func (h *Handler) LoginSubmit(w http.ResponseWriter, r *http.Request) {
 		// Отличаем «не пустили» от «сломалось» только в логе, не в ответе.
 		// Тот же принцип, что в response.RespondError: 5xx — Error, 4xx — не
 		// шумим, иначе перебор пароля утопит настоящие ошибки.
-		if !errors.Is(err, service.ErrUnauthorized) {
+		if errors.Is(err, service.ErrUnauthorized) {
+			// Без email и пароля в логе — только след для расследования
+			// перебора; Info, чтобы кампания не топила настоящие Error.
+			h.log.Info("admin login rejected", slog.String("ip", h.clientIP(r)))
+		} else {
 			h.log.Error("admin login failed", "error", err)
 		}
 		h.render.Render(w, http.StatusUnauthorized, "login", PageData{

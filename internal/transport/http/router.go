@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	_ "github.com/puddingtonnn/offlinemeetup_backend/docs"
+	adminTransport "github.com/puddingtonnn/offlinemeetup_backend/internal/transport/http/admin"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/transport/http/handler"
 	authMiddleware "github.com/puddingtonnn/offlinemeetup_backend/internal/transport/http/middleware"
 	"github.com/redis/go-redis/v9"
@@ -25,6 +26,7 @@ func NewRouter(authHandler *handler.AuthHandler,
 	chatHandler *handler.ChatHandler,
 	wsHandler *websocket.WSHandler,
 	fileHandler *handler.FileHandler,
+	adminHandler *adminTransport.Handler,
 	statusChecker authMiddleware.UserStatusChecker,
 	metricsHandler http.Handler,
 	rdb *redis.Client,
@@ -43,6 +45,11 @@ func NewRouter(authHandler *handler.AuthHandler,
 	})
 
 	router.Handle("/metrics", metricsHandler)
+
+	// Админ-панель живёт вне /v1: это серверный HTML для браузера, а не
+	// версионированное мобильное API, и у неё свой контур авторизации
+	// (cookie-сессия + admin_users вместо Bearer + users).
+	router.Mount("/admin", adminTransport.Routes(adminHandler, rdb, log, cfg))
 
 	if cfg.Env == "local" || cfg.Env == "dev" {
 		router.Post("/auth/dev/login", authHandler.DevLogin)

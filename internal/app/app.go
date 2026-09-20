@@ -22,6 +22,7 @@ import (
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/service/mail"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/service/mail/mailmetrics"
 	transport "github.com/puddingtonnn/offlinemeetup_backend/internal/transport/http"
+	adminTransport "github.com/puddingtonnn/offlinemeetup_backend/internal/transport/http/admin"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/transport/http/handler"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/transport/websocket"
 	"github.com/redis/go-redis/v9"
@@ -86,6 +87,8 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 	fileRepo := repo.NewFileRepo(db)
 	refreshRepo := repo.NewRefreshTokenRepo(db)
 	credentialsRepo := repo.NewCredentialsRepo(db)
+	adminRepo := repo.NewAdminRepo(db)
+	auditRepo := repo.NewAuditRepo(db)
 
 	// The presence of MAIL_SMTP_HOST decides, not APP_ENV: outside local/dev
 	// config.Load already refuses to start without the MAIL_SMTP_* secrets,
@@ -108,6 +111,7 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 		mailer = smtpMailer
 	}
 	authStore := cache.NewRedisAuthStore(rdb, log)
+	adminSessions := cache.NewRedisAdminSessionStore(rdb, log)
 
 	authService := service.NewAuthService(userRepo, userRepo, credentialsRepo, refreshRepo, authStore, mailer, mailMetrics, cfg, log)
 	profileCache := cache.NewProfileCache(cached, cacheMetrics, cfg.CacheTTLProfile)
@@ -121,6 +125,8 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 	presenceStore := cache.NewRedisPresenceStore(rdb)
 	presenceService := service.NewPresenceService(presenceStore, chatService, profileRepo, cfg.PresenceTTL)
 	fileService := service.NewFileService(fileRepo, s3Client, cfg)
+	adminAuthService := service.NewAdminAuthService(adminRepo, adminSessions, cfg, log)
+	auditService := service.NewAuditService(auditRepo, log)
 
 	authHandler := handler.NewAuthHandler(authService, log)
 	profileHandler := handler.NewProfileHandler(profileService, log)
@@ -131,7 +137,16 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 	wsHandler := websocket.NewWebSocketHandler(hub, log, chatService, profileService, presenceService, cfg.WSAllowedOrigins)
 	fileHandler := handler.NewFileHandler(fileService, cfg.MaxUploadSize, log)
 
-	router := transport.NewRouter(authHandler, profileHandler, meetupHandler, tagHandler, geoHandler, chatHandler, wsHandler, fileHandler, authService, metricsHandler, rdb, log, cfg)
+	// Шаблоны разбираются здесь, на старте: битый шаблон обязан валить
+	// запуск, а не первый запрос модератора.
+	adminRenderer, err := adminTransport.NewRenderer(log)
+	if err != nil {
+		log.Error("failed to parse admin templates", slog.String("error", err.Error()))
+		panic(fmt.Errorf("failed to parse admin templates: %w", err))
+	}
+	adminHandler := adminTransport.NewHandler(adminAuthService, auditService, adminRenderer, cfg, log)
+
+	router := transport.NewRouter(authHandler, profileHandler, meetupHandler, tagHandler, geoHandler, chatHandler, wsHandler, fileHandler, adminHandler, authService, metricsHandler, rdb, log, cfg)
 
 	return &App{
 		cfg:    cfg,

@@ -1,0 +1,47 @@
+{{define "user_detail"}}{{template "layout" .}}{{end}}
+{{define "content"}}
+{{$u := .Data.User}}
+<div class="card">
+    <a href="/admin/users" style="color:var(--muted);font-size:13px">← к списку</a>
+    <h2 style="margin:10px 0 18px">
+        {{.Data.DisplayName}}
+        {{if .Data.IsDeleted}}<span style="color:var(--danger);font-size:14px">· удалён</span>{{end}}
+    </h2>
+
+    <table style="margin-bottom:22px">
+        <tr><th style="width:190px">ID</th><td>{{$u.ID}}</td></tr>
+        <tr><th>Email</th><td>{{if $u.Email}}{{$u.Email}}{{else}}<span style="color:var(--muted)">обнулён при удалении</span>{{end}}</td></tr>
+        <tr><th>Username</th><td>{{.Data.Username}}</td></tr>
+        <tr><th>Статус</th><td>{{$u.Status}}</td></tr>
+        <tr><th>Роль</th><td>{{$u.Role}}</td></tr>
+        <tr><th>Зарегистрирован</th><td>{{$u.CreatedAt.Format "2006-01-02 15:04"}}</td></tr>
+        {{if $u.DeletedAt}}<tr><th>Удалён</th><td>{{$u.DeletedAt.Format "2006-01-02 15:04"}}</td></tr>{{end}}
+        <tr><th>Соцаккаунты</th><td>
+            {{if $u.Socials}}{{range $u.Socials}}{{.Provider}} {{end}}{{else}}<span style="color:var(--muted)">нет</span>{{end}}
+        </td></tr>
+    </table>
+
+    {{if not .Data.IsDeleted}}
+    <div style="display:flex;gap:10px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:18px">
+        {{if eq (printf "%s" $u.Status) "banned"}}
+            <form method="post" action="/admin/users/{{$u.ID}}/unban">
+                <button type="submit">Разблокировать</button>
+            </form>
+        {{else}}
+            <form method="post" action="/admin/users/{{$u.ID}}/ban">
+                <button type="submit" style="background:var(--danger)">Заблокировать</button>
+            </form>
+        {{end}}
+
+        <form method="post" action="/admin/users/{{$u.ID}}/logout-all">
+            <button type="submit" style="background:var(--muted)">Отозвать все сессии</button>
+        </form>
+
+        <form method="post" action="/admin/users/{{$u.ID}}/delete"
+              onsubmit="return confirm('Удалить аккаунт? Email обнулится, соцпривязки и пароль будут удалены. Действие необратимо.')">
+            <button type="submit" style="background:var(--danger)">Удалить аккаунт</button>
+        </form>
+    </div>
+    {{end}}
+</div>
+{{end}}

@@ -1,0 +1,38 @@
+{{define "users_table"}}
+<table>
+    <thead>
+    <tr>
+        <th>ID</th><th>Email</th><th>Username</th><th>Имя</th><th>Статус</th><th>Создан</th>
+    </tr>
+    </thead>
+    <tbody>
+    {{range .Page.Items}}
+        <tr>
+            <td><a href="/admin/users/{{.ID}}">{{.ID}}</a></td>
+            <td>{{if .Email}}{{.Email}}{{else}}<span style="color:var(--muted)">—</span>{{end}}</td>
+            <td>{{.Username}}</td>
+            <td>{{.DisplayName}}</td>
+            <td>
+                {{if .IsDeleted}}<span style="color:var(--danger)">удалён</span>
+                {{else}}{{.Status}}{{end}}
+            </td>
+            <td>{{.CreatedAt.Format "2006-01-02"}}</td>
+        </tr>
+    {{else}}
+        <tr><td colspan="6" style="color:var(--muted)">Ничего не найдено</td></tr>
+    {{end}}
+    </tbody>
+</table>
+
+<div style="margin-top:14px;display:flex;align-items:center;gap:12px">
+    <span style="color:var(--muted);font-size:13px">
+        Всего: {{.Page.Total}}{{if .Page.Pages}} · страница {{.Page.CurrentPage}} из {{.Page.Pages}}{{end}}
+    </span>
+    {{if .Page.HasPrev}}
+        <a href="/admin/users?{{.QueryWithOffset .Page.PrevOffset}}">← назад</a>
+    {{end}}
+    {{if .Page.HasNext}}
+        <a href="/admin/users?{{.QueryWithOffset .Page.NextOffset}}">вперёд →</a>
+    {{end}}
+</div>
+{{end}}

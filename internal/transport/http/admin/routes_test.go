@@ -26,7 +26,7 @@ func newTestRoutes(t *testing.T) http.Handler {
 	rend, err := NewRenderer(log)
 	require.NoError(t, err)
 	cfg := &config.Config{Env: "local"}
-	h := NewHandler(&stubAuth{loginErr: service.ErrUnauthorized}, &recordingAudit{}, rend, cfg, log)
+	h := NewHandler(&stubAuth{loginErr: service.ErrUnauthorized}, nil, &recordingAudit{}, rend, cfg, log)
 
 	root := chi.NewRouter()
 	root.Mount("/admin", Routes(h, rdb, log, cfg))

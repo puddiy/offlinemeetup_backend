@@ -1,0 +1,29 @@
+{{define "users"}}{{template "layout" .}}{{end}}
+{{define "content"}}
+<div class="card">
+    <h2 style="margin-top:0">Пользователи</h2>
+
+    <form method="get" action="/admin/users" style="display:flex;gap:10px;align-items:flex-end;margin-bottom:18px">
+        <label style="margin-bottom:0;flex:1">
+            <span>Поиск (email, username, id)</span>
+            <input type="text" name="q" value="{{.Data.Search}}" autofocus>
+        </label>
+        <label style="margin-bottom:0">
+            <span>Статус</span>
+            <select name="status" style="padding:9px 10px;border:1px solid var(--line);border-radius:6px">
+                <option value="">любой</option>
+                <option value="active"{{if eq .Data.Status "active"}} selected{{end}}>active</option>
+                <option value="inactive"{{if eq .Data.Status "inactive"}} selected{{end}}>inactive</option>
+                <option value="banned"{{if eq .Data.Status "banned"}} selected{{end}}>banned</option>
+            </select>
+        </label>
+        <label style="margin-bottom:0;display:flex;align-items:center;gap:6px">
+            <input type="checkbox" name="deleted" value="1"{{if .Data.OnlyDeleted}} checked{{end}} style="width:auto">
+            <span style="margin-bottom:0">только удалённые</span>
+        </label>
+        <button type="submit">Искать</button>
+    </form>
+
+    {{template "users_table" .Data}}
+</div>
+{{end}}

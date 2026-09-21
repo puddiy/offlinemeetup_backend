@@ -22,14 +22,15 @@ type AdminAuthService interface {
 
 type Handler struct {
 	auth   AdminAuthService
+	users  AdminUserSvc
 	audit  service.AuditRecorder
 	render *Renderer
 	cfg    *config.Config
 	log    *slog.Logger
 }
 
-func NewHandler(auth AdminAuthService, audit service.AuditRecorder, r *Renderer, cfg *config.Config, log *slog.Logger) *Handler {
-	return &Handler{auth: auth, audit: audit, render: r, cfg: cfg, log: log}
+func NewHandler(auth AdminAuthService, users AdminUserSvc, audit service.AuditRecorder, r *Renderer, cfg *config.Config, log *slog.Logger) *Handler {
+	return &Handler{auth: auth, users: users, audit: audit, render: r, cfg: cfg, log: log}
 }
 
 // secureCookies — ставить ли флаг Secure. В local его нельзя ставить

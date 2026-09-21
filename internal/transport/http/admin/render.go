@@ -20,7 +20,15 @@ var staticFS embed.FS
 // pages — страницы админки. Каждая парсится в ОТДЕЛЬНЫЙ template.Template
 // вместе с layout: страницы переопределяют один и тот же блок "content", и
 // в общем наборе последняя разобранная затёрла бы все предыдущие.
-var pages = []string{"login", "dashboard"}
+var pages = []string{"login", "dashboard", "users", "user_detail"}
+
+// partialFiles — фрагменты, которые рендерятся БЕЗ layout. Нужны для
+// HTMX-ответов: обновить таблицу на месте, не перерисовывая страницу.
+// Они же подмешиваются в набор каждой страницы, чтобы полная страница
+// могла включить фрагмент через {{template "..."}}.
+var partialFiles = []string{
+	"templates/_users_table.gohtml",
+}
 
 // PageData — общая форма данных для любой страницы. Admin пустой на странице
 // входа (layout по нему решает, рисовать ли шапку).
@@ -33,8 +41,9 @@ type PageData struct {
 }
 
 type Renderer struct {
-	tpl map[string]*template.Template
-	log *slog.Logger
+	tpl      map[string]*template.Template
+	partials *template.Template
+	log      *slog.Logger
 }
 
 // NewRenderer разбирает все шаблоны один раз, на старте приложения.
@@ -44,17 +53,25 @@ func NewRenderer(log *slog.Logger) (*Renderer, error) {
 	tpl := make(map[string]*template.Template, len(pages))
 
 	for _, page := range pages {
-		t, err := template.New(page).ParseFS(templatesFS,
+		files := append([]string{
 			"templates/layout.gohtml",
-			"templates/"+page+".gohtml",
-		)
+			"templates/" + page + ".gohtml",
+		}, partialFiles...)
+
+		t, err := template.New(page).ParseFS(templatesFS, files...)
 		if err != nil {
 			return nil, fmt.Errorf("parse admin template %q: %w", page, err)
 		}
 		tpl[page] = t
 	}
 
-	return &Renderer{tpl: tpl, log: log}, nil
+	// Отдельный набор для самостоятельного рендера фрагментов.
+	partials, err := template.New("partials").ParseFS(templatesFS, partialFiles...)
+	if err != nil {
+		return nil, fmt.Errorf("parse admin partials: %w", err)
+	}
+
+	return &Renderer{tpl: tpl, partials: partials, log: log}, nil
 }
 
 // Render отрисовывает страницу.
@@ -82,6 +99,25 @@ func (r *Renderer) Render(w http.ResponseWriter, status int, name string, data a
 	w.WriteHeader(status)
 	if _, err := buf.WriteTo(w); err != nil {
 		r.log.Error("writing admin response", slog.Any("error", err))
+	}
+}
+
+// RenderPartial отрисовывает фрагмент без layout (ответ на HTMX-запрос).
+// Как и Render, пишет через буфер: недорисованный фрагмент под кодом 200
+// молча испортил бы кусок страницы.
+func (r *Renderer) RenderPartial(w http.ResponseWriter, status int, name string, data any) {
+	var buf bytes.Buffer
+	if err := r.partials.ExecuteTemplate(&buf, name, data); err != nil {
+		r.log.Error("rendering admin partial",
+			slog.String("name", name), slog.Any("error", err))
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	if _, err := buf.WriteTo(w); err != nil {
+		r.log.Error("writing admin partial", slog.Any("error", err))
 	}
 }
 

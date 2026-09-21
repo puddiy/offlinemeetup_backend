@@ -52,6 +52,8 @@ func Routes(h *Handler, rdb *redis.Client, log *slog.Logger, cfg *config.Config)
 		r.Get("/", h.Dashboard)
 		r.Post("/logout", h.Logout)
 
+		r.Get("/users", h.UsersList)
+
 		// Пример гейта по роли для будущих милстоунов — раздел управления
 		// админами будет доступен только роли admin:
 		//   r.With(mw.RequireAdminRole(domain.AdminRoleAdmin)).Get("/admins", h.AdminsList)

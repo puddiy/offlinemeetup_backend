@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/domain"
+	"github.com/puddingtonnn/offlinemeetup_backend/internal/dto"
 	"github.com/stretchr/testify/require"
 )
 
@@ -71,4 +72,38 @@ func TestRenderUnknownTemplateIs500(t *testing.T) {
 	require.Equal(t, 500, rec.Code)
 	require.False(t, strings.Contains(rec.Body.String(), "no-such-template"),
 		"имя шаблона — внутренняя деталь, наружу её не отдаём")
+}
+
+func TestRenderPartialHasNoLayout(t *testing.T) {
+	r, err := NewRenderer(slog.New(slog.DiscardHandler))
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	r.RenderPartial(rec, 200, "users_table", UsersPageData{
+		Page: dto.NewPage([]dto.AdminUserRow{{ID: 1, Email: "a@x.io", Username: "alice", Status: "active"}}, 1, 20, 0),
+	})
+
+	require.Equal(t, 200, rec.Code)
+	body := rec.Body.String()
+	require.Contains(t, body, "a@x.io")
+	require.NotContains(t, body, "<!DOCTYPE html>", "фрагмент не должен тащить layout")
+}
+
+func TestRenderUsersPageIncludesLayoutAndTable(t *testing.T) {
+	r, err := NewRenderer(slog.New(slog.DiscardHandler))
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	r.Render(rec, 200, "users", PageData{
+		Title: "Пользователи",
+		Admin: &domain.AdminUser{ID: 1, Email: "root@x.io", Role: domain.AdminRoleAdmin},
+		Data: UsersPageData{
+			Page: dto.NewPage([]dto.AdminUserRow{{ID: 2, Email: "b@x.io", Username: "bob", Status: "banned"}}, 1, 20, 0),
+		},
+	})
+
+	require.Equal(t, 200, rec.Code)
+	body := rec.Body.String()
+	require.Contains(t, body, "<!DOCTYPE html>")
+	require.Contains(t, body, "b@x.io")
 }

@@ -88,6 +88,7 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 	refreshRepo := repo.NewRefreshTokenRepo(db)
 	credentialsRepo := repo.NewCredentialsRepo(db)
 	adminRepo := repo.NewAdminRepo(db)
+	userAdminRepo := repo.NewUserAdminRepo(db)
 	auditRepo := repo.NewAuditRepo(db)
 
 	// The presence of MAIL_SMTP_HOST decides, not APP_ENV: outside local/dev
@@ -127,6 +128,7 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 	fileService := service.NewFileService(fileRepo, s3Client, cfg)
 	adminAuthService := service.NewAdminAuthService(adminRepo, adminSessions, cfg, log)
 	auditService := service.NewAuditService(auditRepo, log)
+	adminUserService := service.NewAdminUserService(userAdminRepo, refreshRepo, auditService, profileCache, log)
 
 	authHandler := handler.NewAuthHandler(authService, log)
 	profileHandler := handler.NewProfileHandler(profileService, log)
@@ -144,7 +146,7 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 		log.Error("failed to parse admin templates", slog.String("error", err.Error()))
 		panic(fmt.Errorf("failed to parse admin templates: %w", err))
 	}
-	adminHandler := adminTransport.NewHandler(adminAuthService, auditService, adminRenderer, cfg, log)
+	adminHandler := adminTransport.NewHandler(adminAuthService, adminUserService, auditService, adminRenderer, cfg, log)
 
 	router := transport.NewRouter(authHandler, profileHandler, meetupHandler, tagHandler, geoHandler, chatHandler, wsHandler, fileHandler, adminHandler, authService, metricsHandler, rdb, log, cfg)
 

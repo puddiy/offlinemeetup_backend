@@ -1,0 +1,168 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"testing"
+	"time"
+
+	"github.com/puddingtonnn/offlinemeetup_backend/internal/domain"
+	"github.com/puddingtonnn/offlinemeetup_backend/internal/repo"
+	"github.com/puddingtonnn/offlinemeetup_backend/internal/repo/mocks"
+	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
+	"go.uber.org/mock/gomock"
+)
+
+type adminUserFixture struct {
+	repo   *mocks.MockAdminUserRepository
+	tokens *mocks.MockRefreshTokenRevoker
+	audit  *recordingAuditSvc
+	cache  *fakeProfileCache
+	svc    *AdminUserService
+}
+
+func setupAdminUserTest(t *testing.T) *adminUserFixture {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+
+	f := &adminUserFixture{
+		repo:   mocks.NewMockAdminUserRepository(ctrl),
+		tokens: mocks.NewMockRefreshTokenRevoker(ctrl),
+		audit:  &recordingAuditSvc{},
+		cache:  &fakeProfileCache{},
+	}
+	f.svc = NewAdminUserService(f.repo, f.tokens, f.audit, f.cache, slog.New(slog.DiscardHandler))
+	return f
+}
+
+func userWithProfile(id int64, email, username, display string, status domain.UserStatus) domain.User {
+	return domain.User{
+		ID:        id,
+		Email:     email,
+		Status:    status,
+		CreatedAt: time.Now().UTC(),
+		Profile:   &domain.Profile{UserID: id, Username: username, DisplayName: &display},
+	}
+}
+
+func TestListUsersMapsRowsAndTotal(t *testing.T) {
+	f := setupAdminUserTest(t)
+
+	f.repo.EXPECT().
+		List(gomock.Any(), gomock.Any()).
+		Return([]domain.User{
+			userWithProfile(1, "a@x.io", "alice", "Alice", domain.UserStatusActive),
+			userWithProfile(2, "b@x.io", "bob", "Bob", domain.UserStatusBanned),
+		}, 47, nil)
+
+	page, err := f.svc.ListUsers(context.Background(), AdminUserFilter{Limit: 20, Offset: 20})
+
+	require.NoError(t, err)
+	require.Equal(t, 47, page.Total)
+	require.Len(t, page.Items, 2)
+	require.Equal(t, "alice", page.Items[0].Username)
+	require.Equal(t, "Alice", page.Items[0].DisplayName)
+	require.Equal(t, string(domain.UserStatusBanned), page.Items[1].Status)
+	require.Equal(t, 3, page.Pages())
+	require.Equal(t, 2, page.CurrentPage())
+}
+
+// Профиля может не быть (пользователь заведён, профиль не создан) —
+// маппинг обязан это пережить, а не уронить весь список.
+func TestListUsersSurvivesMissingProfile(t *testing.T) {
+	f := setupAdminUserTest(t)
+
+	f.repo.EXPECT().List(gomock.Any(), gomock.Any()).
+		Return([]domain.User{{ID: 9, Email: "orphan@x.io", Status: domain.UserStatusActive}}, 1, nil)
+
+	page, err := f.svc.ListUsers(context.Background(), AdminUserFilter{Limit: 20})
+
+	require.NoError(t, err)
+	require.Len(t, page.Items, 1)
+	require.Empty(t, page.Items[0].Username)
+	require.Empty(t, page.Items[0].DisplayName)
+}
+
+func TestListUsersClampsLimit(t *testing.T) {
+	cases := []struct {
+		name      string
+		in        int
+		wantLimit int
+	}{
+		{"ноль → дефолт", 0, defaultAdminUserLimit},
+		{"отрицательный → дефолт", -5, defaultAdminUserLimit},
+		{"выше потолка → потолок", 5000, maxAdminUserLimit},
+		{"в пределах → как есть", 30, 30},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := setupAdminUserTest(t)
+
+			var got repo.UserQuery
+			f.repo.EXPECT().List(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, q repo.UserQuery) ([]domain.User, int, error) {
+					got = q
+					return nil, 0, nil
+				})
+
+			page, err := f.svc.ListUsers(context.Background(), AdminUserFilter{Limit: tc.in})
+			require.NoError(t, err)
+			require.Equal(t, tc.wantLimit, got.Limit)
+			require.Equal(t, tc.wantLimit, page.Limit)
+		})
+	}
+}
+
+func TestListUsersClampsNegativeOffset(t *testing.T) {
+	f := setupAdminUserTest(t)
+
+	var got repo.UserQuery
+	f.repo.EXPECT().List(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, q repo.UserQuery) ([]domain.User, int, error) {
+			got = q
+			return nil, 0, nil
+		})
+
+	_, err := f.svc.ListUsers(context.Background(), AdminUserFilter{Offset: -100})
+	require.NoError(t, err)
+	require.Equal(t, 0, got.Offset)
+}
+
+func TestGetUserTranslatesNotFound(t *testing.T) {
+	f := setupAdminUserTest(t)
+
+	f.repo.EXPECT().GetDetail(gomock.Any(), int64(7)).Return(nil, repo.ErrUserNotFound)
+
+	_, err := f.svc.GetUser(context.Background(), 7)
+	require.ErrorIs(t, err, ErrNotFound, "репо-сентинел обязан транслироваться в сервисный")
+}
+
+func TestGetUserPropagatesUnknownError(t *testing.T) {
+	f := setupAdminUserTest(t)
+	boom := errors.New("db down")
+
+	f.repo.EXPECT().GetDetail(gomock.Any(), int64(7)).Return(nil, boom)
+
+	_, err := f.svc.GetUser(context.Background(), 7)
+	require.ErrorIs(t, err, boom)
+	require.NotErrorIs(t, err, ErrNotFound)
+}
+
+// recordingAuditSvc ловит записи журнала, сделанные сервисом.
+type recordingAuditSvc struct{ events []AuditEvent }
+
+func (a *recordingAuditSvc) Record(_ context.Context, _ bun.IDB, ev AuditEvent) error {
+	a.events = append(a.events, ev)
+	return nil
+}
+
+// fakeProfileCache считает инвалидации.
+type fakeProfileCache struct{ invalidated []int64 }
+
+func (c *fakeProfileCache) InvalidateProfile(_ context.Context, userID int64) error {
+	c.invalidated = append(c.invalidated, userID)
+	return nil
+}

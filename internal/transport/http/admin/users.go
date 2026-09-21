@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -19,6 +20,8 @@ type AdminUserSvc interface {
 	ListUsers(ctx context.Context, f service.AdminUserFilter) (dto.Page[dto.AdminUserRow], error)
 	SetStatus(ctx context.Context, actorID, userID int64, status domain.UserStatus, ip string) error
 	LogoutEverywhere(ctx context.Context, actorID, userID int64, ip string) error
+	GetUser(ctx context.Context, id int64) (*domain.User, error)
+	DeleteByAdmin(ctx context.Context, actorID, userID int64, ip string) error
 }
 
 // UsersPageData — данные экрана списка. Кладётся в PageData.Data.
@@ -182,4 +185,88 @@ func (h *Handler) UserLogoutAll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.redirectToUser(w, r, userID, "Сессии отозваны (access-токен живёт ещё до 15 минут)", "")
+}
+
+// UserDetailData — данные карточки. DisplayName/Username вычислены заранее:
+// профиль может отсутствовать, и разыменовывать его в шаблоне — верный
+// способ получить панику на проде вместо ошибки компиляции.
+type UserDetailData struct {
+	User        *domain.User
+	Username    string
+	DisplayName string
+	IsDeleted   bool
+}
+
+// UserDetail рисует карточку пользователя.
+func (h *Handler) UserDetail(w http.ResponseWriter, r *http.Request) {
+	admin, _ := middleware.GetAdminFromContext(r.Context())
+
+	userID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		http.Redirect(w, r, "/admin/users", http.StatusSeeOther)
+		return
+	}
+
+	user, err := h.users.GetUser(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, service.ErrNotFound) {
+			h.render.Render(w, http.StatusNotFound, "users", PageData{
+				Title: "Пользователи",
+				Admin: admin,
+				Error: "Пользователь не найден",
+				Data:  UsersPageData{},
+			})
+			return
+		}
+		h.log.Error("loading user detail", slog.Int64("user_id", userID), slog.Any("error", err))
+		h.render.Render(w, http.StatusInternalServerError, "users", PageData{
+			Title: "Пользователи",
+			Admin: admin,
+			Error: "Не удалось загрузить пользователя",
+			Data:  UsersPageData{},
+		})
+		return
+	}
+
+	data := UserDetailData{User: user, IsDeleted: user.DeletedAt != nil}
+	if user.Profile != nil {
+		data.Username = user.Profile.Username
+		data.DisplayName = domain.DisplayNameOf(user.Profile.Username, user.Profile.DisplayName)
+	}
+
+	q := r.URL.Query()
+	h.render.Render(w, http.StatusOK, "user_detail", PageData{
+		Title: "Пользователь",
+		Admin: admin,
+		Flash: q.Get("flash"),
+		Error: q.Get("err"),
+		Data:  data,
+	})
+}
+
+// UserDelete удаляет аккаунт по решению администратора.
+func (h *Handler) UserDelete(w http.ResponseWriter, r *http.Request) {
+	admin, ok := middleware.GetAdminFromContext(r.Context())
+	if !ok || admin == nil {
+		http.Redirect(w, r, loginPath, http.StatusSeeOther)
+		return
+	}
+
+	userID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		http.Redirect(w, r, "/admin/users", http.StatusSeeOther)
+		return
+	}
+
+	switch err := h.users.DeleteByAdmin(r.Context(), admin.ID, userID, h.clientIP(r)); {
+	case err == nil:
+		h.redirectToUser(w, r, userID, "Аккаунт удалён и анонимизирован", "")
+	case errors.Is(err, service.ErrUserAlreadyDeleted):
+		h.redirectToUser(w, r, userID, "", "Аккаунт уже был удалён")
+	case errors.Is(err, service.ErrNotFound):
+		http.Redirect(w, r, "/admin/users", http.StatusSeeOther)
+	default:
+		h.log.Error("deleting user", slog.Int64("user_id", userID), slog.Any("error", err))
+		h.redirectToUser(w, r, userID, "", "Не удалось удалить аккаунт")
+	}
 }

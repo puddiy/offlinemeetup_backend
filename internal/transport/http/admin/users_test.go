@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/config"
@@ -28,6 +29,10 @@ type stubUserSvc struct {
 	gotIP     string
 	statusErr error
 	logoutErr error
+
+	user      *domain.User
+	getErr    error
+	deleteErr error
 }
 
 func (s *stubUserSvc) SetStatus(_ context.Context, actorID, userID int64, status domain.UserStatus, ip string) error {
@@ -220,5 +225,106 @@ func TestUserLogoutAllErrorShowsMessage(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.UserLogoutAll(rec, postWithChiParam("/admin/users/42/logout-all", "42", &domain.AdminUser{ID: 7, Role: domain.AdminRoleAdmin}))
 
+	require.Contains(t, rec.Header().Get("Location"), "err=")
+}
+
+func (s *stubUserSvc) GetUser(_ context.Context, id int64) (*domain.User, error) {
+	s.gotUserID = id
+	return s.user, s.getErr
+}
+
+func (s *stubUserSvc) DeleteByAdmin(_ context.Context, actorID, userID int64, ip string) error {
+	s.gotActor, s.gotUserID, s.gotIP = actorID, userID, ip
+	return s.deleteErr
+}
+
+func getWithChiParam(target, id string, admin *domain.AdminUser) *http.Request {
+	req := httptest.NewRequest(http.MethodGet, target, nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", id)
+	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
+	if admin != nil {
+		ctx = context.WithValue(ctx, middleware.AdminKey, admin)
+	}
+	return req.WithContext(ctx)
+}
+
+func TestUserDetailRenders(t *testing.T) {
+	display := "Alice"
+	svc := &stubUserSvc{user: &domain.User{
+		ID: 42, Email: "a@x.io", Status: domain.UserStatusActive,
+		Profile: &domain.Profile{UserID: 42, Username: "alice", DisplayName: &display},
+	}}
+	h := newUsersHandler(t, svc)
+
+	rec := httptest.NewRecorder()
+	h.UserDetail(rec, getWithChiParam("/admin/users/42", "42", &domain.AdminUser{ID: 7, Role: domain.AdminRoleAdmin}))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	require.Contains(t, body, "a@x.io")
+	require.Contains(t, body, "Заблокировать")
+	require.Contains(t, body, "Удалить аккаунт")
+}
+
+// У пользователя может не быть профиля — карточка обязана отрисоваться,
+// а не упасть на разыменовании nil.
+func TestUserDetailWithoutProfile(t *testing.T) {
+	svc := &stubUserSvc{user: &domain.User{ID: 42, Email: "a@x.io", Status: domain.UserStatusActive}}
+	h := newUsersHandler(t, svc)
+
+	rec := httptest.NewRecorder()
+	h.UserDetail(rec, getWithChiParam("/admin/users/42", "42", &domain.AdminUser{ID: 7, Role: domain.AdminRoleAdmin}))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+// У удалённого нет кнопок действий — иначе поддержка «разбанит» аккаунт,
+// в который всё равно невозможно войти.
+func TestUserDetailDeletedHasNoActions(t *testing.T) {
+	now := time.Now()
+	svc := &stubUserSvc{user: &domain.User{ID: 42, Status: domain.UserStatusInactive, DeletedAt: &now}}
+	h := newUsersHandler(t, svc)
+
+	rec := httptest.NewRecorder()
+	h.UserDetail(rec, getWithChiParam("/admin/users/42", "42", &domain.AdminUser{ID: 7, Role: domain.AdminRoleAdmin}))
+
+	body := rec.Body.String()
+	require.Contains(t, body, "удалён")
+	require.NotContains(t, body, "Заблокировать")
+	require.NotContains(t, body, "Удалить аккаунт")
+}
+
+func TestUserDetailNotFound(t *testing.T) {
+	svc := &stubUserSvc{getErr: service.ErrNotFound}
+	h := newUsersHandler(t, svc)
+
+	rec := httptest.NewRecorder()
+	h.UserDetail(rec, getWithChiParam("/admin/users/42", "42", &domain.AdminUser{ID: 7, Role: domain.AdminRoleAdmin}))
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+	require.Contains(t, rec.Body.String(), "Пользователь не найден")
+}
+
+func TestUserDeleteSuccess(t *testing.T) {
+	svc := &stubUserSvc{}
+	h := newUsersHandler(t, svc)
+
+	rec := httptest.NewRecorder()
+	h.UserDelete(rec, postWithChiParam("/admin/users/42/delete", "42", &domain.AdminUser{ID: 7, Role: domain.AdminRoleAdmin}))
+
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Contains(t, rec.Header().Get("Location"), "flash=")
+	require.Equal(t, int64(42), svc.gotUserID)
+}
+
+func TestUserDeleteAlreadyDeleted(t *testing.T) {
+	svc := &stubUserSvc{deleteErr: service.ErrUserAlreadyDeleted}
+	h := newUsersHandler(t, svc)
+
+	rec := httptest.NewRecorder()
+	h.UserDelete(rec, postWithChiParam("/admin/users/42/delete", "42", &domain.AdminUser{ID: 7, Role: domain.AdminRoleAdmin}))
+
+	require.Equal(t, http.StatusSeeOther, rec.Code)
 	require.Contains(t, rec.Header().Get("Location"), "err=")
 }

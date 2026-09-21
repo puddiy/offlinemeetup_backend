@@ -231,3 +231,70 @@ func (s *AdminUserService) LogoutEverywhere(ctx context.Context, actorID, userID
 	}
 	return nil
 }
+
+// DeleteByAdmin удаляет аккаунт по решению администратора.
+//
+// Удаление мягкое с анонимизацией (см. UserAdminRepo.SoftDeleteTx): жёсткое
+// в этой схеме невозможно — messages.sender_id ссылается на users без
+// ON DELETE, и DELETE упадёт на нарушении FK у любого, кто писал в чат.
+// Мутация и запись журнала — одной транзакцией.
+func (s *AdminUserService) DeleteByAdmin(ctx context.Context, actorID, userID int64, ip string) error {
+	if actorID == 0 || userID == 0 {
+		return ErrInvalidInput
+	}
+
+	err := s.repo.RunInTx(ctx, func(tx bun.Tx) error {
+		if err := s.repo.SoftDeleteTx(ctx, tx, userID); err != nil {
+			return err
+		}
+		return s.audit.Record(ctx, tx, AuditEvent{
+			AdminID:    actorID,
+			Action:     AuditActionUserDelete,
+			TargetType: "user",
+			TargetID:   strconv.FormatInt(userID, 10),
+			IP:         ip,
+			Details:    map[string]any{"by": "admin"},
+		})
+	})
+	if err != nil {
+		return s.mapDeleteError(err)
+	}
+
+	s.invalidateProfile(ctx, userID)
+	return nil
+}
+
+// DeleteOwnAccount удаляет аккаунт по запросу самого пользователя
+// (DELETE /v1/account — требование App Store и Google Play).
+//
+// В admin_audit_log НЕ пишется: у таблицы admin_id NOT NULL, и она про
+// действия администраторов. Самоудаление — событие приложения, ему место
+// в обычном логе.
+func (s *AdminUserService) DeleteOwnAccount(ctx context.Context, userID int64) error {
+	if userID == 0 {
+		return ErrInvalidInput
+	}
+
+	err := s.repo.RunInTx(ctx, func(tx bun.Tx) error {
+		return s.repo.SoftDeleteTx(ctx, tx, userID)
+	})
+	if err != nil {
+		return s.mapDeleteError(err)
+	}
+
+	s.invalidateProfile(ctx, userID)
+	s.log.Info("account self-deleted", slog.Int64("user_id", userID))
+	return nil
+}
+
+// mapDeleteError переводит сентинелы репозитория в сервисные.
+func (s *AdminUserService) mapDeleteError(err error) error {
+	switch {
+	case errors.Is(err, repo.ErrUserAlreadyDeleted):
+		return ErrUserAlreadyDeleted
+	case errors.Is(err, repo.ErrUserNotFound):
+		return ErrNotFound
+	default:
+		return fmt.Errorf("delete account: %w", err)
+	}
+}

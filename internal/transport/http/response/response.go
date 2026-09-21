@@ -41,6 +41,9 @@ func RespondError(w http.ResponseWriter, err error, log *slog.Logger) {
 	var msg string
 
 	switch {
+	case errors.Is(err, service.ErrUserAlreadyDeleted):
+		statusCode = http.StatusConflict
+		msg = "Account already deleted"
 	case errors.Is(err, service.ErrNotFound):
 		statusCode = http.StatusNotFound
 		msg = "Resource not found"

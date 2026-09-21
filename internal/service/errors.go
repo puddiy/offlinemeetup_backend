@@ -18,4 +18,10 @@ var (
 	// cooldown/quota, confirmation-code attempt limit) as opposed to the
 	// IP-based RateLimiter middleware. Maps to 429.
 	ErrTooManyRequests = errors.New("too many requests")
+
+	// ErrUserAlreadyDeleted — аккаунт уже удалён. Отдельно от ErrNotFound,
+	// чтобы поддержка видела «уже удалён» вместо «не найден» на явно
+	// существующем id, а мобильный клиент мог показать осмысленный текст
+	// на повторный DELETE /v1/account.
+	ErrUserAlreadyDeleted = errors.New("user already deleted")
 )

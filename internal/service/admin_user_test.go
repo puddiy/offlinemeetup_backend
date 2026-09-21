@@ -279,3 +279,61 @@ func TestLogoutEverywhereStopsOnRevokeFailure(t *testing.T) {
 	require.ErrorIs(t, err, boom)
 	require.Empty(t, f.audit.events, "не записали в журнал то, чего не сделали")
 }
+
+func TestDeleteByAdminSoftDeletesAndAudits(t *testing.T) {
+	f := setupAdminUserTest(t)
+
+	expectRunInTx(f)
+	f.repo.EXPECT().SoftDeleteTx(gomock.Any(), gomock.Any(), int64(42)).Return(nil)
+
+	err := f.svc.DeleteByAdmin(context.Background(), 7, 42, "10.0.0.1")
+
+	require.NoError(t, err)
+	require.Len(t, f.audit.events, 1)
+	require.Equal(t, AuditActionUserDelete, f.audit.events[0].Action)
+	require.Equal(t, int64(7), f.audit.events[0].AdminID)
+	require.Equal(t, "42", f.audit.events[0].TargetID)
+	require.Equal(t, []int64{42}, f.cache.invalidated)
+}
+
+func TestDeleteByAdminTranslatesAlreadyDeleted(t *testing.T) {
+	f := setupAdminUserTest(t)
+
+	expectRunInTx(f)
+	f.repo.EXPECT().SoftDeleteTx(gomock.Any(), gomock.Any(), int64(42)).
+		Return(repo.ErrUserAlreadyDeleted)
+
+	err := f.svc.DeleteByAdmin(context.Background(), 7, 42, "")
+
+	require.ErrorIs(t, err, ErrUserAlreadyDeleted)
+	require.Empty(t, f.cache.invalidated)
+}
+
+func TestDeleteByAdminTranslatesNotFound(t *testing.T) {
+	f := setupAdminUserTest(t)
+
+	expectRunInTx(f)
+	f.repo.EXPECT().SoftDeleteTx(gomock.Any(), gomock.Any(), int64(42)).Return(repo.ErrUserNotFound)
+
+	require.ErrorIs(t, f.svc.DeleteByAdmin(context.Background(), 7, 42, ""), ErrNotFound)
+}
+
+// Самоудаление — НЕ действие администратора: admin_audit_log.admin_id
+// объявлен NOT NULL и означает именно админа. Пишем только в slog.
+func TestDeleteOwnAccountDoesNotTouchAdminAudit(t *testing.T) {
+	f := setupAdminUserTest(t)
+
+	expectRunInTx(f)
+	f.repo.EXPECT().SoftDeleteTx(gomock.Any(), gomock.Any(), int64(42)).Return(nil)
+
+	err := f.svc.DeleteOwnAccount(context.Background(), 42)
+
+	require.NoError(t, err)
+	require.Empty(t, f.audit.events, "в admin_audit_log самоудаление не пишется")
+	require.Equal(t, []int64{42}, f.cache.invalidated)
+}
+
+func TestDeleteOwnAccountRejectsZeroID(t *testing.T) {
+	f := setupAdminUserTest(t)
+	require.ErrorIs(t, f.svc.DeleteOwnAccount(context.Background(), 0), ErrInvalidInput)
+}

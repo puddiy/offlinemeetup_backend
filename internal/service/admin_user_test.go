@@ -152,9 +152,15 @@ func TestGetUserPropagatesUnknownError(t *testing.T) {
 }
 
 // recordingAuditSvc ловит записи журнала, сделанные сервисом.
-type recordingAuditSvc struct{ events []AuditEvent }
+type recordingAuditSvc struct {
+	events []AuditEvent
+	err    error
+}
 
 func (a *recordingAuditSvc) Record(_ context.Context, _ bun.IDB, ev AuditEvent) error {
+	if a.err != nil {
+		return a.err
+	}
 	a.events = append(a.events, ev)
 	return nil
 }
@@ -165,4 +171,81 @@ type fakeProfileCache struct{ invalidated []int64 }
 func (c *fakeProfileCache) InvalidateProfile(_ context.Context, userID int64) error {
 	c.invalidated = append(c.invalidated, userID)
 	return nil
+}
+
+// fakeTx — минимальная заглушка bun.Tx для проверки, что мутация и запись
+// журнала попали в ОДНУ транзакцию. RunInTx у мока просто исполняет
+// замыкание, передавая нулевую bun.Tx.
+func expectRunInTx(f *adminUserFixture) {
+	f.repo.EXPECT().RunInTx(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, fn func(tx bun.Tx) error) error {
+			return fn(bun.Tx{})
+		})
+}
+
+func TestSetStatusBansAndAudits(t *testing.T) {
+	f := setupAdminUserTest(t)
+
+	expectRunInTx(f)
+	f.repo.EXPECT().
+		SetStatusTx(gomock.Any(), gomock.Any(), int64(42), domain.UserStatusBanned).
+		Return(nil)
+
+	err := f.svc.SetStatus(context.Background(), 7, 42, domain.UserStatusBanned, "10.0.0.1")
+
+	require.NoError(t, err)
+	require.Len(t, f.audit.events, 1)
+	ev := f.audit.events[0]
+	require.Equal(t, AuditActionUserBan, ev.Action)
+	require.Equal(t, int64(7), ev.AdminID, "в журнале — АДМИН, а не жертва")
+	require.Equal(t, "user", ev.TargetType)
+	require.Equal(t, "42", ev.TargetID)
+	require.Equal(t, "10.0.0.1", ev.IP)
+	require.Equal(t, []int64{42}, f.cache.invalidated, "кэш профиля обязан сброситься")
+}
+
+func TestSetStatusUnbanUsesOwnAction(t *testing.T) {
+	f := setupAdminUserTest(t)
+
+	expectRunInTx(f)
+	f.repo.EXPECT().SetStatusTx(gomock.Any(), gomock.Any(), int64(42), domain.UserStatusActive).Return(nil)
+
+	require.NoError(t, f.svc.SetStatus(context.Background(), 7, 42, domain.UserStatusActive, ""))
+	require.Equal(t, AuditActionUnbanOrBan(domain.UserStatusActive), f.audit.events[0].Action)
+}
+
+func TestSetStatusRejectsUnknownStatus(t *testing.T) {
+	f := setupAdminUserTest(t)
+
+	err := f.svc.SetStatus(context.Background(), 7, 42, domain.UserStatus("superuser"), "")
+
+	require.ErrorIs(t, err, ErrInvalidInput)
+	require.Empty(t, f.audit.events, "невалидный статус не должен доезжать до БД")
+}
+
+func TestSetStatusTranslatesNotFound(t *testing.T) {
+	f := setupAdminUserTest(t)
+
+	expectRunInTx(f)
+	f.repo.EXPECT().SetStatusTx(gomock.Any(), gomock.Any(), int64(42), gomock.Any()).
+		Return(repo.ErrUserNotFound)
+
+	err := f.svc.SetStatus(context.Background(), 7, 42, domain.UserStatusBanned, "")
+
+	require.ErrorIs(t, err, ErrNotFound)
+	require.Empty(t, f.cache.invalidated, "провалившаяся мутация не инвалидирует кэш")
+}
+
+// Если мутация прошла, а журнал — нет, транзакция обязана откатиться целиком.
+func TestSetStatusRollsBackWhenAuditFails(t *testing.T) {
+	f := setupAdminUserTest(t)
+	f.audit.err = errors.New("audit table gone")
+
+	expectRunInTx(f)
+	f.repo.EXPECT().SetStatusTx(gomock.Any(), gomock.Any(), int64(42), gomock.Any()).Return(nil)
+
+	err := f.svc.SetStatus(context.Background(), 7, 42, domain.UserStatusBanned, "")
+
+	require.Error(t, err)
+	require.Empty(t, f.cache.invalidated)
 }

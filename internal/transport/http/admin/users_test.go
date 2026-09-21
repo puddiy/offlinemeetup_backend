@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/config"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/domain"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/dto"
@@ -20,6 +21,17 @@ type stubUserSvc struct {
 	gotFilter service.AdminUserFilter
 	page      dto.Page[dto.AdminUserRow]
 	err       error
+
+	gotActor  int64
+	gotUserID int64
+	gotStatus domain.UserStatus
+	gotIP     string
+	statusErr error
+}
+
+func (s *stubUserSvc) SetStatus(_ context.Context, actorID, userID int64, status domain.UserStatus, ip string) error {
+	s.gotActor, s.gotUserID, s.gotStatus, s.gotIP = actorID, userID, status, ip
+	return s.statusErr
 }
 
 func (s *stubUserSvc) ListUsers(_ context.Context, f service.AdminUserFilter) (dto.Page[dto.AdminUserRow], error) {
@@ -118,4 +130,66 @@ func TestUsersListEscapesSearchInput(t *testing.T) {
 	h.UsersList(rec, usersRequest("/admin/users?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E"))
 
 	require.NotContains(t, rec.Body.String(), "<script>alert(1)</script>")
+}
+
+func postWithChiParam(target, id string, admin *domain.AdminUser) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, target, nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", id)
+	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
+	if admin != nil {
+		ctx = context.WithValue(ctx, middleware.AdminKey, admin)
+	}
+	return req.WithContext(ctx)
+}
+
+func TestUserBanCallsServiceAndRedirects(t *testing.T) {
+	svc := &stubUserSvc{}
+	h := newUsersHandler(t, svc)
+	admin := &domain.AdminUser{ID: 7, Email: "root@x.io", Role: domain.AdminRoleAdmin}
+
+	rec := httptest.NewRecorder()
+	h.UserBan(rec, postWithChiParam("/admin/users/42/ban", "42", admin))
+
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Contains(t, rec.Header().Get("Location"), "/admin/users/42")
+	require.Equal(t, int64(7), svc.gotActor)
+	require.Equal(t, int64(42), svc.gotUserID)
+	require.Equal(t, domain.UserStatusBanned, svc.gotStatus)
+}
+
+func TestUserUnbanSetsActive(t *testing.T) {
+	svc := &stubUserSvc{}
+	h := newUsersHandler(t, svc)
+	admin := &domain.AdminUser{ID: 7, Role: domain.AdminRoleAdmin}
+
+	rec := httptest.NewRecorder()
+	h.UserUnban(rec, postWithChiParam("/admin/users/42/unban", "42", admin))
+
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Equal(t, domain.UserStatusActive, svc.gotStatus)
+}
+
+func TestUserBanWithoutAdminRedirectsToLogin(t *testing.T) {
+	svc := &stubUserSvc{}
+	h := newUsersHandler(t, svc)
+
+	rec := httptest.NewRecorder()
+	h.UserBan(rec, postWithChiParam("/admin/users/42/ban", "42", nil))
+
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Equal(t, loginPath, rec.Header().Get("Location"))
+	require.Zero(t, svc.gotUserID, "сервис не должен вызываться без админа в контексте")
+}
+
+func TestUserBanServiceErrorShowsMessage(t *testing.T) {
+	svc := &stubUserSvc{statusErr: errors.New("db down")}
+	h := newUsersHandler(t, svc)
+	admin := &domain.AdminUser{ID: 7, Role: domain.AdminRoleAdmin}
+
+	rec := httptest.NewRecorder()
+	h.UserBan(rec, postWithChiParam("/admin/users/42/ban", "42", admin))
+
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Contains(t, rec.Header().Get("Location"), "err=")
 }

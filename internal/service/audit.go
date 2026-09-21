@@ -15,6 +15,11 @@ import (
 const (
 	AuditActionLogin  = "admin.login"
 	AuditActionLogout = "admin.logout"
+
+	AuditActionUserBan    = "user.ban"
+	AuditActionUserUnban  = "user.unban"
+	AuditActionUserLogout = "user.logout_all"
+	AuditActionUserDelete = "user.delete"
 )
 
 // AuditEvent — то, что вызывающий хочет записать в журнал. Отдельный тип, а

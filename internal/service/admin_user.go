@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/domain"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/dto"
@@ -131,4 +132,66 @@ func adminUserRow(u domain.User) dto.AdminUserRow {
 		row.DisplayName = domain.DisplayNameOf(u.Profile.Username, u.Profile.DisplayName)
 	}
 	return row
+}
+
+// AuditActionUnbanOrBan выбирает действие журнала по целевому статусу.
+// Отдельная функция, чтобы транспорт, сервис и тесты называли одно и то же
+// действие одинаково, а не собирали строку в трёх местах.
+func AuditActionUnbanOrBan(status domain.UserStatus) string {
+	if status == domain.UserStatusActive {
+		return AuditActionUserUnban
+	}
+	return AuditActionUserBan
+}
+
+// SetStatus меняет статус пользователя и пишет об этом в журнал.
+//
+// Мутация и запись журнала идут ОДНОЙ транзакцией: если журнал не записался,
+// бан откатывается. Иначе в системе появился бы забаненный пользователь без
+// следа о том, кто и когда его забанил, — ровно то, ради чего журнал заведён.
+//
+// Кэш профиля сбрасывается ПОСЛЕ успешного коммита: сбросить раньше значит
+// прогреть его снова старым значением, если транзакция откатится.
+func (s *AdminUserService) SetStatus(ctx context.Context, actorID, userID int64, status domain.UserStatus, ip string) error {
+	switch status {
+	case domain.UserStatusActive, domain.UserStatusInactive, domain.UserStatusBanned:
+	default:
+		return ErrInvalidInput
+	}
+	if actorID == 0 || userID == 0 {
+		return ErrInvalidInput
+	}
+
+	err := s.repo.RunInTx(ctx, func(tx bun.Tx) error {
+		if err := s.repo.SetStatusTx(ctx, tx, userID, status); err != nil {
+			return err
+		}
+		return s.audit.Record(ctx, tx, AuditEvent{
+			AdminID:    actorID,
+			Action:     AuditActionUnbanOrBan(status),
+			TargetType: "user",
+			TargetID:   strconv.FormatInt(userID, 10),
+			IP:         ip,
+			Details:    map[string]any{"status": string(status)},
+		})
+	})
+	if errors.Is(err, repo.ErrUserNotFound) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("set user status: %w", err)
+	}
+
+	s.invalidateProfile(ctx, userID)
+	return nil
+}
+
+// invalidateProfile сбрасывает кэш профиля. Ошибка не проваливает запрос:
+// мутация уже закоммичена, и откатывать нечего — но она обязана быть видна
+// в логах, потому что означает расхождение кэша с БД до истечения TTL.
+func (s *AdminUserService) invalidateProfile(ctx context.Context, userID int64) {
+	if err := s.profile.InvalidateProfile(ctx, userID); err != nil {
+		s.log.Error("invalidating profile cache after admin mutation",
+			slog.Int64("user_id", userID), slog.Any("error", err))
+	}
 }

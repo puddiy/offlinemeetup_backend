@@ -55,6 +55,7 @@ func Routes(h *Handler, rdb *redis.Client, log *slog.Logger, cfg *config.Config)
 		r.Get("/users", h.UsersList)
 		r.Post("/users/{id}/ban", h.UserBan)
 		r.Post("/users/{id}/unban", h.UserUnban)
+		r.Post("/users/{id}/logout-all", h.UserLogoutAll)
 
 		// Пример гейта по роли для будущих милстоунов — раздел управления
 		// админами будет доступен только роли admin:

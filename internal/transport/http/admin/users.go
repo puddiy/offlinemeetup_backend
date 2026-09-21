@@ -18,6 +18,7 @@ import (
 type AdminUserSvc interface {
 	ListUsers(ctx context.Context, f service.AdminUserFilter) (dto.Page[dto.AdminUserRow], error)
 	SetStatus(ctx context.Context, actorID, userID int64, status domain.UserStatus, ip string) error
+	LogoutEverywhere(ctx context.Context, actorID, userID int64, ip string) error
 }
 
 // UsersPageData — данные экрана списка. Кладётся в PageData.Data.
@@ -158,4 +159,27 @@ func (h *Handler) redirectToUser(w http.ResponseWriter, r *http.Request, userID 
 		target += "?" + q
 	}
 	http.Redirect(w, r, target, http.StatusSeeOther)
+}
+
+// UserLogoutAll отзывает все сессии пользователя.
+func (h *Handler) UserLogoutAll(w http.ResponseWriter, r *http.Request) {
+	admin, ok := middleware.GetAdminFromContext(r.Context())
+	if !ok || admin == nil {
+		http.Redirect(w, r, loginPath, http.StatusSeeOther)
+		return
+	}
+
+	userID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		http.Redirect(w, r, "/admin/users", http.StatusSeeOther)
+		return
+	}
+
+	if err := h.users.LogoutEverywhere(r.Context(), admin.ID, userID, h.clientIP(r)); err != nil {
+		h.log.Error("revoking user sessions", slog.Int64("user_id", userID), slog.Any("error", err))
+		h.redirectToUser(w, r, userID, "", "Не удалось отозвать сессии")
+		return
+	}
+
+	h.redirectToUser(w, r, userID, "Сессии отозваны (access-токен живёт ещё до 15 минут)", "")
 }

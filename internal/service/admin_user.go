@@ -195,3 +195,39 @@ func (s *AdminUserService) invalidateProfile(ctx context.Context, userID int64) 
 			slog.Int64("user_id", userID), slog.Any("error", err))
 	}
 }
+
+// LogoutEverywhere отзывает все refresh-токены пользователя.
+//
+// Применение: у человека увели телефон, или поддержка закрывает доступ,
+// не блокируя аккаунт. Access-токен живёт ещё до 15 минут (JWT_ACCESS_TTL) —
+// это цена отсутствия серверного состояния у access-токена. Нужен мгновенный
+// отрез — используй бан: AuthMiddleware проверяет статус на каждом запросе.
+//
+// Отзыв и запись журнала НЕ в одной транзакции: токены живут в своём
+// репозитории с собственным соединением. Порядок выбран так, чтобы худший
+// исход был безопасным: если журнал не запишется после успешного отзыва,
+// мы потеряем строку аудита, но доступ будет отозван. Обратный порядок
+// оставил бы запись о действии, которого не произошло.
+func (s *AdminUserService) LogoutEverywhere(ctx context.Context, actorID, userID int64, ip string) error {
+	if actorID == 0 || userID == 0 {
+		return ErrInvalidInput
+	}
+
+	if err := s.tokens.RevokeAllForUser(ctx, userID); err != nil {
+		return fmt.Errorf("revoke refresh tokens: %w", err)
+	}
+
+	err := s.repo.RunInTx(ctx, func(tx bun.Tx) error {
+		return s.audit.Record(ctx, tx, AuditEvent{
+			AdminID:    actorID,
+			Action:     AuditActionUserLogout,
+			TargetType: "user",
+			TargetID:   strconv.FormatInt(userID, 10),
+			IP:         ip,
+		})
+	})
+	if err != nil {
+		return fmt.Errorf("audit logout everywhere: %w", err)
+	}
+	return nil
+}

@@ -27,6 +27,7 @@ type stubUserSvc struct {
 	gotStatus domain.UserStatus
 	gotIP     string
 	statusErr error
+	logoutErr error
 }
 
 func (s *stubUserSvc) SetStatus(_ context.Context, actorID, userID int64, status domain.UserStatus, ip string) error {
@@ -191,5 +192,33 @@ func TestUserBanServiceErrorShowsMessage(t *testing.T) {
 	h.UserBan(rec, postWithChiParam("/admin/users/42/ban", "42", admin))
 
 	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Contains(t, rec.Header().Get("Location"), "err=")
+}
+
+func (s *stubUserSvc) LogoutEverywhere(_ context.Context, actorID, userID int64, ip string) error {
+	s.gotActor, s.gotUserID, s.gotIP = actorID, userID, ip
+	return s.logoutErr
+}
+
+func TestUserLogoutAllCallsService(t *testing.T) {
+	svc := &stubUserSvc{}
+	h := newUsersHandler(t, svc)
+
+	rec := httptest.NewRecorder()
+	h.UserLogoutAll(rec, postWithChiParam("/admin/users/42/logout-all", "42", &domain.AdminUser{ID: 7, Role: domain.AdminRoleAdmin}))
+
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Contains(t, rec.Header().Get("Location"), "flash=")
+	require.Equal(t, int64(7), svc.gotActor)
+	require.Equal(t, int64(42), svc.gotUserID)
+}
+
+func TestUserLogoutAllErrorShowsMessage(t *testing.T) {
+	svc := &stubUserSvc{logoutErr: errors.New("redis down")}
+	h := newUsersHandler(t, svc)
+
+	rec := httptest.NewRecorder()
+	h.UserLogoutAll(rec, postWithChiParam("/admin/users/42/logout-all", "42", &domain.AdminUser{ID: 7, Role: domain.AdminRoleAdmin}))
+
 	require.Contains(t, rec.Header().Get("Location"), "err=")
 }

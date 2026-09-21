@@ -249,3 +249,33 @@ func TestSetStatusRollsBackWhenAuditFails(t *testing.T) {
 	require.Error(t, err)
 	require.Empty(t, f.cache.invalidated)
 }
+
+func TestLogoutEverywhereRevokesAndAudits(t *testing.T) {
+	f := setupAdminUserTest(t)
+
+	f.tokens.EXPECT().RevokeAllForUser(gomock.Any(), int64(42)).Return(nil)
+	expectRunInTx(f)
+
+	err := f.svc.LogoutEverywhere(context.Background(), 7, 42, "10.0.0.1")
+
+	require.NoError(t, err)
+	require.Len(t, f.audit.events, 1)
+	require.Equal(t, AuditActionUserLogout, f.audit.events[0].Action)
+	require.Equal(t, int64(7), f.audit.events[0].AdminID)
+	require.Equal(t, "42", f.audit.events[0].TargetID)
+}
+
+// Отзыв токенов живёт в своей таблице и своём репозитории — в одну
+// транзакцию с журналом его не завести. Поэтому порядок такой: сначала
+// отзываем, потом пишем журнал. Провал отзыва обязан остановить всё.
+func TestLogoutEverywhereStopsOnRevokeFailure(t *testing.T) {
+	f := setupAdminUserTest(t)
+	boom := errors.New("redis down")
+
+	f.tokens.EXPECT().RevokeAllForUser(gomock.Any(), int64(42)).Return(boom)
+
+	err := f.svc.LogoutEverywhere(context.Background(), 7, 42, "")
+
+	require.ErrorIs(t, err, boom)
+	require.Empty(t, f.audit.events, "не записали в журнал то, чего не сделали")
+}

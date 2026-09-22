@@ -362,6 +362,34 @@ info:
   title: Offline Meetup API
   version: "1.0"
 paths:
+  /v1/account:
+    delete:
+      description: 'Мягкое удаление с анонимизацией: email обнуляется, привязки соцсетей
+        и пароль удаляются, все refresh-токены отзываются. Сообщения и прошедшие митапы
+        остаются, автор отображается как «Удалённый пользователь». Восстановление
+        невозможно.'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Аккаунт удалён
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Аккаунт уже удалён
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Удалить свой аккаунт
+      tags:
+      - account
   /v1/auth/forgot-password:
     post:
       consumes:

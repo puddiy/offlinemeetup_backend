@@ -138,6 +138,7 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 	chatHandler := handler.NewChatHandler(chatService, presenceService, hub, log)
 	wsHandler := websocket.NewWebSocketHandler(hub, log, chatService, profileService, presenceService, cfg.WSAllowedOrigins)
 	fileHandler := handler.NewFileHandler(fileService, cfg.MaxUploadSize, log)
+	accountHandler := handler.NewAccountHandler(adminUserService, log)
 
 	// Шаблоны разбираются здесь, на старте: битый шаблон обязан валить
 	// запуск, а не первый запрос модератора.
@@ -148,7 +149,7 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 	}
 	adminHandler := adminTransport.NewHandler(adminAuthService, adminUserService, auditService, adminRenderer, cfg, log)
 
-	router := transport.NewRouter(authHandler, profileHandler, meetupHandler, tagHandler, geoHandler, chatHandler, wsHandler, fileHandler, adminHandler, authService, metricsHandler, rdb, log, cfg)
+	router := transport.NewRouter(authHandler, profileHandler, meetupHandler, tagHandler, geoHandler, chatHandler, wsHandler, fileHandler, adminHandler, accountHandler, authService, metricsHandler, rdb, log, cfg)
 
 	return &App{
 		cfg:    cfg,

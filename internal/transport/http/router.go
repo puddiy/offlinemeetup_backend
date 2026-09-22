@@ -27,6 +27,7 @@ func NewRouter(authHandler *handler.AuthHandler,
 	wsHandler *websocket.WSHandler,
 	fileHandler *handler.FileHandler,
 	adminHandler *adminTransport.Handler,
+	accountHandler *handler.AccountHandler,
 	statusChecker authMiddleware.UserStatusChecker,
 	metricsHandler http.Handler,
 	rdb *redis.Client,
@@ -103,6 +104,7 @@ func NewRouter(authHandler *handler.AuthHandler,
 
 			r.Get("/auth/me", authHandler.Me)
 			r.Patch("/auth/password", authHandler.ChangePassword)
+			r.Delete("/account", accountHandler.DeleteMyAccount)
 
 			r.Route("/profile", func(r chi.Router) {
 				r.Get("/", profileHandler.GetMyProfile)

@@ -8,6 +8,46 @@
     },
     "basePath": "/",
     "paths": {
+        "/v1/account": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Мягкое удаление с анонимизацией: email обнуляется, привязки соцсетей и пароль удаляются, все refresh-токены отзываются. Сообщения и прошедшие митапы остаются, автор отображается как «Удалённый пользователь». Восстановление невозможно.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "account"
+                ],
+                "summary": "Удалить свой аккаунт",
+                "responses": {
+                    "204": {
+                        "description": "Аккаунт удалён"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Аккаунт уже удалён",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/auth/forgot-password": {
             "post": {
                 "description": "Принимает login (email или username) и всегда отвечает 202 — независимо от того, существует ли такой аккаунт, чтобы эндпоинт не подсказывал, какие аккаунты зарегистрированы. Код для сброса отправляется на email, только если аккаунт найден.",

@@ -42,6 +42,10 @@ logs/
 # Private product roadmap — not for public repo
 docs/ROADMAP.md
 
+# Security invariants — names the attack paths each rule was written after,
+# for a live production system. Not for a public repo. Back it up privately.
+docs/SECURITY-INVARIANTS.md
+
 # AI-tooling files — kept local only, not tracked
 CLAUDE.md
 GEMINI.md
@@ -49,3 +53,8 @@ docs/superpowers/
 
 # Local worktrees (subagent-driven-development)
 .worktrees/
+
+# Бэкапы прода — содержат .env, дамп БД, acme.json. Никогда не коммитить.
+scripts/*.tar.gz
+scripts/*.sha256
+meetuper-backup-*

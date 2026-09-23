@@ -128,7 +128,7 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 	fileService := service.NewFileService(fileRepo, s3Client, cfg)
 	adminAuthService := service.NewAdminAuthService(adminRepo, adminSessions, cfg, log)
 	auditService := service.NewAuditService(auditRepo, log)
-	adminUserService := service.NewAdminUserService(userAdminRepo, refreshRepo, auditService, profileCache, log)
+	adminUserService := service.NewAdminUserService(userAdminRepo, refreshRepo, auditService, profileCache, meetupCache, log)
 
 	authHandler := handler.NewAuthHandler(authService, log)
 	profileHandler := handler.NewProfileHandler(profileService, log)

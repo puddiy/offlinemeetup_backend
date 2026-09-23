@@ -20,6 +20,7 @@ type adminUserFixture struct {
 	tokens *mocks.MockRefreshTokenRevoker
 	audit  *recordingAuditSvc
 	cache  *fakeProfileCache
+	mcache *fakeMeetupCache
 	svc    *AdminUserService
 }
 
@@ -32,8 +33,9 @@ func setupAdminUserTest(t *testing.T) *adminUserFixture {
 		tokens: mocks.NewMockRefreshTokenRevoker(ctrl),
 		audit:  &recordingAuditSvc{},
 		cache:  &fakeProfileCache{},
+		mcache: &fakeMeetupCache{},
 	}
-	f.svc = NewAdminUserService(f.repo, f.tokens, f.audit, f.cache, slog.New(slog.DiscardHandler))
+	f.svc = NewAdminUserService(f.repo, f.tokens, f.audit, f.cache, f.mcache, slog.New(slog.DiscardHandler))
 	return f
 }
 
@@ -173,6 +175,14 @@ func (c *fakeProfileCache) InvalidateProfile(_ context.Context, userID int64) er
 	return nil
 }
 
+// fakeMeetupCache считает сброшенные снапшоты митапов.
+type fakeMeetupCache struct{ invalidated []int64 }
+
+func (c *fakeMeetupCache) InvalidateMeetup(_ context.Context, meetupID int64) error {
+	c.invalidated = append(c.invalidated, meetupID)
+	return nil
+}
+
 // fakeTx — минимальная заглушка bun.Tx для проверки, что мутация и запись
 // журнала попали в ОДНУ транзакцию. RunInTx у мока просто исполняет
 // замыкание, передавая нулевую bun.Tx.
@@ -253,6 +263,7 @@ func TestSetStatusRollsBackWhenAuditFails(t *testing.T) {
 func TestLogoutEverywhereRevokesAndAudits(t *testing.T) {
 	f := setupAdminUserTest(t)
 
+	f.repo.EXPECT().GetDetail(gomock.Any(), int64(42)).Return(&domain.User{ID: 42}, nil)
 	f.tokens.EXPECT().RevokeAllForUser(gomock.Any(), int64(42)).Return(nil)
 	expectRunInTx(f)
 
@@ -272,6 +283,7 @@ func TestLogoutEverywhereStopsOnRevokeFailure(t *testing.T) {
 	f := setupAdminUserTest(t)
 	boom := errors.New("redis down")
 
+	f.repo.EXPECT().GetDetail(gomock.Any(), int64(42)).Return(&domain.User{ID: 42}, nil)
 	f.tokens.EXPECT().RevokeAllForUser(gomock.Any(), int64(42)).Return(boom)
 
 	err := f.svc.LogoutEverywhere(context.Background(), 7, 42, "")
@@ -285,6 +297,7 @@ func TestDeleteByAdminSoftDeletesAndAudits(t *testing.T) {
 
 	expectRunInTx(f)
 	f.repo.EXPECT().SoftDeleteTx(gomock.Any(), gomock.Any(), int64(42)).Return(nil)
+	f.repo.EXPECT().MeetupIDsForUser(gomock.Any(), int64(42)).Return([]int64{11, 22}, nil)
 
 	err := f.svc.DeleteByAdmin(context.Background(), 7, 42, "10.0.0.1")
 
@@ -294,6 +307,8 @@ func TestDeleteByAdminSoftDeletesAndAudits(t *testing.T) {
 	require.Equal(t, int64(7), f.audit.events[0].AdminID)
 	require.Equal(t, "42", f.audit.events[0].TargetID)
 	require.Equal(t, []int64{42}, f.cache.invalidated)
+	require.Equal(t, []int64{11, 22}, f.mcache.invalidated,
+		"снапшоты митапов держат Creator/Participants целиком — их тоже надо сбросить")
 }
 
 func TestDeleteByAdminTranslatesAlreadyDeleted(t *testing.T) {
@@ -325,15 +340,67 @@ func TestDeleteOwnAccountDoesNotTouchAdminAudit(t *testing.T) {
 
 	expectRunInTx(f)
 	f.repo.EXPECT().SoftDeleteTx(gomock.Any(), gomock.Any(), int64(42)).Return(nil)
+	f.repo.EXPECT().MeetupIDsForUser(gomock.Any(), int64(42)).Return([]int64{11}, nil)
 
 	err := f.svc.DeleteOwnAccount(context.Background(), 42)
 
 	require.NoError(t, err)
 	require.Empty(t, f.audit.events, "в admin_audit_log самоудаление не пишется")
 	require.Equal(t, []int64{42}, f.cache.invalidated)
+	require.Equal(t, []int64{11}, f.mcache.invalidated)
 }
 
 func TestDeleteOwnAccountRejectsZeroID(t *testing.T) {
 	f := setupAdminUserTest(t)
 	require.ErrorIs(t, f.svc.DeleteOwnAccount(context.Background(), 0), ErrInvalidInput)
+}
+
+// Находка ревью: LogoutEverywhere рапортовал успех и писал в журнал для
+// несуществующего пользователя. RevokeAllForUser по неизвестному id обновляет
+// ноль строк и ошибки не возвращает, поэтому заход на
+// /admin/users/999999/logout-all давал зелёный флеш и запись user.logout_all
+// о действии, которого не было.
+func TestLogoutEverywhereUnknownUser(t *testing.T) {
+	f := setupAdminUserTest(t)
+
+	f.repo.EXPECT().GetDetail(gomock.Any(), int64(999999)).Return(nil, repo.ErrUserNotFound)
+
+	err := f.svc.LogoutEverywhere(context.Background(), 7, 999999, "10.0.0.1")
+
+	require.ErrorIs(t, err, ErrNotFound)
+	require.Empty(t, f.audit.events, "журнал не должен получить запись о действии над несуществующим пользователем")
+}
+
+// Находка ревью: offset не был ограничен сверху, хотя для митапов правило
+// уже есть (maxMeetupOffset). ?offset=999999999 заставлял Postgres просеять
+// и выбросить миллиард строк.
+func TestListUsersClampsHugeOffset(t *testing.T) {
+	f := setupAdminUserTest(t)
+
+	var got repo.UserQuery
+	f.repo.EXPECT().List(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, q repo.UserQuery) ([]domain.User, int, error) {
+			got = q
+			return nil, 0, nil
+		})
+
+	page, err := f.svc.ListUsers(context.Background(), AdminUserFilter{Offset: 999_999_999})
+
+	require.NoError(t, err)
+	require.Equal(t, maxAdminUserOffset, got.Offset)
+	require.Equal(t, maxAdminUserOffset, page.Offset, "конверт обязан отдавать зажатый offset, иначе ссылки пагинации уведут обратно за потолок")
+}
+
+// Ошибка листинга митапов не должна отменять уже совершённое удаление:
+// аккаунт удалён, откатывать нечего, профиль сброшен.
+func TestDeleteSurvivesMeetupLookupFailure(t *testing.T) {
+	f := setupAdminUserTest(t)
+
+	expectRunInTx(f)
+	f.repo.EXPECT().SoftDeleteTx(gomock.Any(), gomock.Any(), int64(42)).Return(nil)
+	f.repo.EXPECT().MeetupIDsForUser(gomock.Any(), int64(42)).Return(nil, errors.New("db down"))
+
+	require.NoError(t, f.svc.DeleteOwnAccount(context.Background(), 42))
+	require.Equal(t, []int64{42}, f.cache.invalidated)
+	require.Empty(t, f.mcache.invalidated)
 }

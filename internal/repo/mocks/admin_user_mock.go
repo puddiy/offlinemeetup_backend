@@ -74,6 +74,21 @@ func (mr *MockAdminUserRepositoryMockRecorder) List(ctx, q any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockAdminUserRepository)(nil).List), ctx, q)
 }
 
+// MeetupIDsForUser mocks base method.
+func (m *MockAdminUserRepository) MeetupIDsForUser(ctx context.Context, userID int64) ([]int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MeetupIDsForUser", ctx, userID)
+	ret0, _ := ret[0].([]int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MeetupIDsForUser indicates an expected call of MeetupIDsForUser.
+func (mr *MockAdminUserRepositoryMockRecorder) MeetupIDsForUser(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MeetupIDsForUser", reflect.TypeOf((*MockAdminUserRepository)(nil).MeetupIDsForUser), ctx, userID)
+}
+
 // RunInTx mocks base method.
 func (m *MockAdminUserRepository) RunInTx(ctx context.Context, fn func(bun.Tx) error) error {
 	m.ctrl.T.Helper()
@@ -190,4 +205,42 @@ func (m *MockadminProfileCache) InvalidateProfile(ctx context.Context, userID in
 func (mr *MockadminProfileCacheMockRecorder) InvalidateProfile(ctx, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InvalidateProfile", reflect.TypeOf((*MockadminProfileCache)(nil).InvalidateProfile), ctx, userID)
+}
+
+// MockadminMeetupCache is a mock of adminMeetupCache interface.
+type MockadminMeetupCache struct {
+	ctrl     *gomock.Controller
+	recorder *MockadminMeetupCacheMockRecorder
+	isgomock struct{}
+}
+
+// MockadminMeetupCacheMockRecorder is the mock recorder for MockadminMeetupCache.
+type MockadminMeetupCacheMockRecorder struct {
+	mock *MockadminMeetupCache
+}
+
+// NewMockadminMeetupCache creates a new mock instance.
+func NewMockadminMeetupCache(ctrl *gomock.Controller) *MockadminMeetupCache {
+	mock := &MockadminMeetupCache{ctrl: ctrl}
+	mock.recorder = &MockadminMeetupCacheMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockadminMeetupCache) EXPECT() *MockadminMeetupCacheMockRecorder {
+	return m.recorder
+}
+
+// InvalidateMeetup mocks base method.
+func (m *MockadminMeetupCache) InvalidateMeetup(ctx context.Context, meetupID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InvalidateMeetup", ctx, meetupID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InvalidateMeetup indicates an expected call of InvalidateMeetup.
+func (mr *MockadminMeetupCacheMockRecorder) InvalidateMeetup(ctx, meetupID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InvalidateMeetup", reflect.TypeOf((*MockadminMeetupCache)(nil).InvalidateMeetup), ctx, meetupID)
 }

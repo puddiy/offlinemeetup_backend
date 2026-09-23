@@ -328,3 +328,66 @@ func TestUserDeleteAlreadyDeleted(t *testing.T) {
 	require.Equal(t, http.StatusSeeOther, rec.Code)
 	require.Contains(t, rec.Header().Get("Location"), "err=")
 }
+
+// Находка ревью: ссылки пагинации собирались как href="/admin/users?{{...}}",
+// и html/template экранировал разделители запроса («&» → «%26», «=» → «%3d»),
+// из-за чего весь набор параметров приезжал обратно ОДНИМ именем с пустым
+// значением. Поддержка не могла уйти со страницы 1, а фильтр молча терялся.
+// Тесты этого не ловили: во всех фикстурах total <= limit, то есть ветки со
+// ссылками ни разу не рендерились.
+func TestUsersTableLinksAreNotOverEscaped(t *testing.T) {
+	r, err := NewRenderer(slog.New(slog.DiscardHandler))
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	r.RenderPartial(rec, http.StatusOK, "users_table", UsersPageData{
+		Search: "alice",
+		Status: "banned",
+		Page:   dto.NewPage([]dto.AdminUserRow{{ID: 1}}, 47, 20, 20),
+	})
+
+	body := rec.Body.String()
+	require.NotContains(t, body, "%26", "«&» не должен быть процентно-закодирован")
+	require.NotContains(t, body, "%3d", "«=» не должен быть процентно-закодирован")
+	require.Contains(t, body, "offset=40", "ссылка «вперёд» обязана нести следующий offset")
+	require.Contains(t, body, "offset=0", "ссылка «назад» обязана нести предыдущий offset")
+	require.Contains(t, body, "q=alice", "активный поиск обязан переживать переход по страницам")
+	require.Contains(t, body, "status=banned", "активный фильтр статуса — тоже")
+}
+
+// Кнопка удаления не должна показываться модератору: маршрут всё равно
+// вернёт ему 403, а предлагать недоступное действие — плохой интерфейс.
+func TestUserDetailHidesDeleteFromModerator(t *testing.T) {
+	display := "Alice"
+	user := &domain.User{
+		ID: 42, Email: "a@x.io", Status: domain.UserStatusActive,
+		Profile: &domain.Profile{UserID: 42, Username: "alice", DisplayName: &display},
+	}
+
+	cases := []struct {
+		role    domain.AdminRole
+		wantBtn bool
+	}{
+		{domain.AdminRoleAdmin, true},
+		{domain.AdminRoleModerator, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(string(tc.role), func(t *testing.T) {
+			h := newUsersHandler(t, &stubUserSvc{user: user})
+
+			rec := httptest.NewRecorder()
+			h.UserDetail(rec, getWithChiParam("/admin/users/42", "42",
+				&domain.AdminUser{ID: 7, Email: "root@x.io", Role: tc.role}))
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			body := rec.Body.String()
+			require.Contains(t, body, "Заблокировать", "бан доступен обеим ролям")
+			if tc.wantBtn {
+				require.Contains(t, body, "Удалить аккаунт")
+			} else {
+				require.NotContains(t, body, "Удалить аккаунт")
+			}
+		})
+	}
+}

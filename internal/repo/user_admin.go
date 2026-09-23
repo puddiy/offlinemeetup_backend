@@ -161,7 +161,7 @@ func (r *UserAdminRepo) SetStatusTx(ctx context.Context, tx bun.IDB, userID int6
 //     уникальных индекса допускают произвольное число NULL;
 //   - users.status        — inactive, чтобы AuthMiddleware закрыл доступ
 //     на следующем же запросе;
-//   - profile.username    — deleted_<id> (формат уникален по построению),
+//   - profile.username    — см. anonymizedUsername (занять его нельзя),
 //     display_name — «Удалённый пользователь»: DisplayNameOf покажет именно
 //     это в истории чатов, где реплики остаются;
 //   - profile.bio / avatar_file_id — вычищаются, это пользовательский контент;
@@ -206,7 +206,7 @@ func (r *UserAdminRepo) SoftDeleteTx(ctx context.Context, tx bun.IDB, userID int
 
 	if _, err := tx.NewUpdate().
 		Model((*domain.Profile)(nil)).
-		Set("username = ?", "deleted_"+strconv.FormatInt(userID, 10)).
+		Set("username = ?", anonymizedUsername(userID)).
 		Set("display_name = ?", "Удалённый пользователь").
 		Set("bio = ?", "").
 		Set("avatar_file_id = NULL").
@@ -240,6 +240,52 @@ func (r *UserAdminRepo) SoftDeleteTx(ctx context.Context, tx bun.IDB, userID int
 	}
 
 	return nil
+}
+
+// MeetupIDsForUser возвращает id всех митапов, в снапшот которых пользователь
+// мог попасть: созданных им и тех, где он участник.
+//
+// Нужен для инвалидации кэша при удалении аккаунта. dto.MeetupResponse
+// встраивает Creator и Participants как ПОЛНЫЕ ProfileResponse (имя, био,
+// ссылка на аватар), а MeetupCache держит инвариантный снапшот целиком —
+// поэтому сброса одного profile:{id} недостаточно: удалённая личность
+// продолжала бы отдаваться из тёплого снапшота до истечения CACHE_TTL_MEETUP.
+//
+// Запрос намеренно идёт по таблицам, а не по модели domain.Meetup: у той
+// стоит тег bun:",soft_delete", и Bun отфильтровал бы отменённые митапы — а
+// их снапшоты в Redis всё равно лежат и требуют сброса.
+func (r *UserAdminRepo) MeetupIDsForUser(ctx context.Context, userID int64) ([]int64, error) {
+	var ids []int64
+	err := r.db.NewRaw(
+		`SELECT id FROM meetups WHERE creator_id = ?
+		 UNION
+		 SELECT meetup_id FROM participants WHERE user_id = ?`,
+		userID, userID,
+	).Scan(ctx, &ids)
+	if err != nil {
+		return nil, fmt.Errorf("meetup ids for user: %w", err)
+	}
+	return ids, nil
+}
+
+// anonymizedUsername — имя, которое получает профиль удалённого аккаунта.
+//
+// Разделитель ДЕФИС, и это не косметика. Формат username, который может занять
+// живой пользователь, — `^[a-zA-Z0-9_.]{2,32}$` (dto.ValidUsername): буквы,
+// цифры, подчёркивание и точка. Дефиса там нет, поэтому «deleted-42»
+// зарегистрировать или выставить себе через PATCH /v1/profile НЕВОЗМОЖНО,
+// и столкновение с уникальным индексом uq_profile_username_lower исключено
+// по построению.
+//
+// С подчёркиванием («deleted_42») это не так: такое имя валидно, и любой
+// желающий мог занять его заранее — после чего у пользователя 42 удаление
+// аккаунта падало бы на нарушении уникальности НАВСЕГДА, ломая обязательный
+// для App Store и Google Play сценарий. Именно так и было до этой правки.
+//
+// Инвариант «дефис не бывает в пользовательском username» закреплён тестом
+// TestValidUsernameRejectsAnonymizedForm в internal/dto.
+func anonymizedUsername(userID int64) string {
+	return "deleted-" + strconv.FormatInt(userID, 10)
 }
 
 // expectOneRow превращает «обновлено ноль строк» в сентинел. Bun не считает

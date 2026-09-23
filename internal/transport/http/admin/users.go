@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"errors"
+	"html/template"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -32,10 +33,20 @@ type UsersPageData struct {
 	OnlyDeleted bool
 }
 
-// QueryWithOffset собирает query-строку пагинации, сохраняя текущие фильтры.
-// Метод на данных, а не конкатенация в шаблоне: url.Values экранирует
-// пользовательский ввод, а ручная склейка в {{...}} — нет.
-func (d UsersPageData) QueryWithOffset(offset int) string {
+// LinkWithOffset собирает ПОЛНУЮ ссылку на страницу списка, сохраняя текущие
+// фильтры.
+//
+// Возвращает всю ссылку целиком и типом template.URL — и подставляться в
+// шаблон обязана тоже целиком: `href="{{.LinkWithOffset ...}}"`. Вариант
+// `href="/admin/users?{{...}}"` НЕ работает: html/template распознаёт позицию
+// после «?» как контекст urlPartQueryOrFrag и экранирует разделители
+// («&» → «%26», «=» → «%3d»), после чего весь набор параметров приезжает
+// обратно ОДНИМ именем с пустым значением — пагинация и фильтры молча
+// перестают действовать. Это была реальная поломка, а не гипотеза.
+//
+// template.URL здесь безопасен: путь — константа в коде, а всё, что пришло
+// от пользователя, проходит через url.Values.Encode().
+func (d UsersPageData) LinkWithOffset(offset int) template.URL {
 	v := url.Values{}
 	if d.Search != "" {
 		v.Set("q", d.Search)
@@ -48,7 +59,7 @@ func (d UsersPageData) QueryWithOffset(offset int) string {
 	}
 	v.Set("limit", strconv.Itoa(d.Page.Limit))
 	v.Set("offset", strconv.Itoa(offset))
-	return v.Encode()
+	return template.URL("/admin/users?" + v.Encode())
 }
 
 // UsersList рисует список. На HTMX-запрос (заголовок HX-Request) отдаёт

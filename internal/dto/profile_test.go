@@ -40,3 +40,31 @@ func TestValidUsername(t *testing.T) {
 		})
 	}
 }
+
+// TestValidUsernameRejectsAnonymizedForm закрепляет инвариант, на котором
+// держится удаление аккаунта.
+//
+// repo.anonymizedUsername переименовывает профиль удалённого пользователя в
+// «deleted-<id>». Безопасность этой схемы держится ровно на одном факте: дефис
+// НЕ входит в набор символов, разрешённый для пользовательского username.
+// Поэтому занять такое имя заранее нельзя, и UPDATE при удалении не может
+// упереться в уникальный индекс uq_profile_username_lower.
+//
+// Если кто-то когда-нибудь добавит дефис в usernameRegexp — этот тест упадёт,
+// и упадёт он здесь, а не в проде на пользователе, который не может удалить
+// свой аккаунт. Раньше разделителем было подчёркивание, и «deleted_42»
+// прекрасно регистрировался: удаление аккаунта ломалось навсегда.
+func TestValidUsernameRejectsAnonymizedForm(t *testing.T) {
+	anonymized := []string{"deleted-1", "deleted-42", "deleted-9223372036854775807"}
+	for _, name := range anonymized {
+		if ValidUsername(name) {
+			t.Fatalf("ValidUsername(%q) = true; анонимизированное имя обязано быть незанимаемым", name)
+		}
+	}
+
+	// Контроль: подчёркивание всё ещё валидно, то есть тест выше падает
+	// именно из-за дефиса, а не потому что regexp сломан целиком.
+	if !ValidUsername("deleted_42") {
+		t.Fatal(`ValidUsername("deleted_42") = false; ожидался валидный username — иначе тест выше ничего не доказывает`)
+	}
+}

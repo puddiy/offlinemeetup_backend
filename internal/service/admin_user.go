@@ -16,6 +16,11 @@ import (
 const (
 	// defaultAdminUserLimit — размер страницы по умолчанию.
 	defaultAdminUserLimit = 20
+	// maxAdminUserOffset — потолок сдвига. Без него ?offset=999999999
+	// заставляет Postgres просеять и выбросить миллиард строк по одному
+	// клику. Значение то же, что у maxMeetupOffset в meetup.go: правило в
+	// кодовой базе уже есть, и расходиться с ним незачем.
+	maxAdminUserOffset = 100_000
 	// maxAdminUserLimit — потолок, чтобы ?limit=100000 не превращался в
 	// полный скан таблицы по одному запросу из браузера.
 	maxAdminUserLimit = 100
@@ -28,6 +33,7 @@ type AdminUserRepository interface {
 	SetStatusTx(ctx context.Context, tx bun.IDB, userID int64, status domain.UserStatus) error
 	SoftDeleteTx(ctx context.Context, tx bun.IDB, userID int64) error
 	RunInTx(ctx context.Context, fn func(tx bun.Tx) error) error
+	MeetupIDsForUser(ctx context.Context, userID int64) ([]int64, error)
 }
 
 // RefreshTokenRevoker — отзыв всех refresh-токенов пользователя.
@@ -40,6 +46,13 @@ type RefreshTokenRevoker interface {
 // сбросить его профиль, иначе забаненный ещё TTL минут выглядит активным.
 type adminProfileCache interface {
 	InvalidateProfile(ctx context.Context, userID int64) error
+}
+
+// adminMeetupCache — узкий срез MeetupCache. Нужен при удалении аккаунта:
+// снапшот митапа держит Creator и Participants целиком, поэтому сброса
+// одного профиля мало (см. UserAdminRepo.MeetupIDsForUser).
+type adminMeetupCache interface {
+	InvalidateMeetup(ctx context.Context, meetupID int64) error
 }
 
 // AdminUserFilter — фильтр админского списка на языке транспорта.
@@ -58,6 +71,7 @@ type AdminUserService struct {
 	tokens  RefreshTokenRevoker
 	audit   AuditRecorder
 	profile adminProfileCache
+	meetups adminMeetupCache
 	log     *slog.Logger
 }
 
@@ -66,9 +80,17 @@ func NewAdminUserService(
 	tokens RefreshTokenRevoker,
 	audit AuditRecorder,
 	profile adminProfileCache,
+	meetups adminMeetupCache,
 	log *slog.Logger,
 ) *AdminUserService {
-	return &AdminUserService{repo: r, tokens: tokens, audit: audit, profile: profile, log: log}
+	return &AdminUserService{
+		repo:    r,
+		tokens:  tokens,
+		audit:   audit,
+		profile: profile,
+		meetups: meetups,
+		log:     log,
+	}
 }
 
 // ListUsers отдаёт страницу пользователей.
@@ -83,6 +105,9 @@ func (s *AdminUserService) ListUsers(ctx context.Context, f AdminUserFilter) (dt
 	offset := f.Offset
 	if offset < 0 {
 		offset = 0
+	}
+	if offset > maxAdminUserOffset {
+		offset = maxAdminUserOffset
 	}
 
 	users, total, err := s.repo.List(ctx, repo.UserQuery{
@@ -186,6 +211,35 @@ func (s *AdminUserService) SetStatus(ctx context.Context, actorID, userID int64,
 	return nil
 }
 
+// invalidateAfterDelete сбрасывает всё, где могла осесть личность удалённого
+// пользователя: его профиль и снапшоты митапов, в которые он вложен целиком.
+//
+// Вызывается ПОСЛЕ коммита и ошибок не возвращает: аккаунт уже удалён,
+// откатывать нечего. Но каждый промах логируется — он означает, что имя и
+// аватар удалённого человека ещё сколько-то отдаются из кэша.
+//
+// Чего это НЕ делает: не удаляет сам файл аватара из S3. Удаления файлов в
+// проекте пока не существует (у FileRepo только Create, у S3-интерфейса
+// только PutObject) — оно появится в Milestone C вместе с модерацией, там же
+// имеет смысл добавить и уборку осиротевших объектов.
+func (s *AdminUserService) invalidateAfterDelete(ctx context.Context, userID int64) {
+	s.invalidateProfile(ctx, userID)
+
+	ids, err := s.repo.MeetupIDsForUser(ctx, userID)
+	if err != nil {
+		s.log.Error("listing meetups to invalidate after account deletion",
+			slog.Int64("user_id", userID), slog.Any("error", err))
+		return
+	}
+
+	for _, id := range ids {
+		if err := s.meetups.InvalidateMeetup(ctx, id); err != nil {
+			s.log.Error("invalidating meetup cache after account deletion",
+				slog.Int64("user_id", userID), slog.Int64("meetup_id", id), slog.Any("error", err))
+		}
+	}
+}
+
 // invalidateProfile сбрасывает кэш профиля. Ошибка не проваливает запрос:
 // мутация уже закоммичена, и откатывать нечего — но она обязана быть видна
 // в логах, потому что означает расхождение кэша с БД до истечения TTL.
@@ -211,6 +265,19 @@ func (s *AdminUserService) invalidateProfile(ctx context.Context, userID int64) 
 func (s *AdminUserService) LogoutEverywhere(ctx context.Context, actorID, userID int64, ip string) error {
 	if actorID == 0 || userID == 0 {
 		return ErrInvalidInput
+	}
+
+	// Проверяем существование ПЕРЕД отзывом. RevokeAllForUser по неизвестному
+	// id обновляет ноль строк и не возвращает ошибки, поэтому без этой
+	// проверки заход на /admin/users/999999/logout-all (старая закладка,
+	// опечатка в URL) давал зелёный флеш «Сессии отозваны» и запись
+	// user.logout_all в журнале — след действия, которого не было. Ровно от
+	// этого страхует транзакционный аудит в SetStatus и DeleteByAdmin.
+	if _, err := s.repo.GetDetail(ctx, userID); err != nil {
+		if errors.Is(err, repo.ErrUserNotFound) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("logout everywhere: %w", err)
 	}
 
 	if err := s.tokens.RevokeAllForUser(ctx, userID); err != nil {
@@ -260,7 +327,7 @@ func (s *AdminUserService) DeleteByAdmin(ctx context.Context, actorID, userID in
 		return s.mapDeleteError(err)
 	}
 
-	s.invalidateProfile(ctx, userID)
+	s.invalidateAfterDelete(ctx, userID)
 	return nil
 }
 
@@ -282,7 +349,7 @@ func (s *AdminUserService) DeleteOwnAccount(ctx context.Context, userID int64) e
 		return s.mapDeleteError(err)
 	}
 
-	s.invalidateProfile(ctx, userID)
+	s.invalidateAfterDelete(ctx, userID)
 	s.log.Info("account self-deleted", slog.Int64("user_id", userID))
 	return nil
 }

@@ -29,10 +29,10 @@
         Всего: {{.Page.Total}}{{if .Page.Pages}} · страница {{.Page.CurrentPage}} из {{.Page.Pages}}{{end}}
     </span>
     {{if .Page.HasPrev}}
-        <a href="/admin/users?{{.QueryWithOffset .Page.PrevOffset}}">← назад</a>
+        <a href="{{.LinkWithOffset .Page.PrevOffset}}">← назад</a>
     {{end}}
     {{if .Page.HasNext}}
-        <a href="/admin/users?{{.QueryWithOffset .Page.NextOffset}}">вперёд →</a>
+        <a href="{{.LinkWithOffset .Page.NextOffset}}">вперёд →</a>
     {{end}}
 </div>
 {{end}}

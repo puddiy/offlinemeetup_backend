@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/config"
+	"github.com/puddingtonnn/offlinemeetup_backend/internal/domain"
 	mw "github.com/puddingtonnn/offlinemeetup_backend/internal/transport/http/middleware"
 	"github.com/redis/go-redis/v9"
 )
@@ -57,11 +58,17 @@ func Routes(h *Handler, rdb *redis.Client, log *slog.Logger, cfg *config.Config)
 		r.Post("/users/{id}/ban", h.UserBan)
 		r.Post("/users/{id}/unban", h.UserUnban)
 		r.Post("/users/{id}/logout-all", h.UserLogoutAll)
-		r.Post("/users/{id}/delete", h.UserDelete)
 
-		// Пример гейта по роли для будущих милстоунов — раздел управления
-		// админами будет доступен только роли admin:
-		//   r.With(mw.RequireAdminRole(domain.AdminRoleAdmin)).Get("/admins", h.AdminsList)
+		// Удаление — единственное НЕОБРАТИМОЕ действие над пользователем, и
+		// единственное, закрытое ролью. Модератору по домену положены разбор
+		// жалоб, скрытие контента и бан (см. domain.AdminRoleModerator) —
+		// анонимизации аккаунта без права на откат там нет. Бан и отзыв
+		// сессий остаются доступны обеим ролям: оба обратимы.
+		//
+		// Гейт здесь — настоящая защита; скрытая кнопка в шаблоне лишь
+		// убирает её с глаз, POST'ом по URL обходится в один запрос.
+		r.With(mw.RequireAdminRole(domain.AdminRoleAdmin)).
+			Post("/users/{id}/delete", h.UserDelete)
 	})
 
 	return r

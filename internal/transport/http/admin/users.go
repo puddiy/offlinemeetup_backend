@@ -122,18 +122,18 @@ func atoiDefault(s string, def int) int {
 // UserBan блокирует пользователя. Действует немедленно: AuthMiddleware
 // перечитывает статус на каждом авторизованном запросе.
 func (h *Handler) UserBan(w http.ResponseWriter, r *http.Request) {
-	h.setUserStatus(w, r, domain.UserStatusBanned, "Пользователь заблокирован")
+	h.setUserStatus(w, r, domain.UserStatusBanned, noticeBanned)
 }
 
 // UserUnban снимает блокировку.
 func (h *Handler) UserUnban(w http.ResponseWriter, r *http.Request) {
-	h.setUserStatus(w, r, domain.UserStatusActive, "Блокировка снята")
+	h.setUserStatus(w, r, domain.UserStatusActive, noticeUnbanned)
 }
 
 // setUserStatus — общая часть бана и разбана: достать актора и id, вызвать
 // сервис, вернуться на карточку с сообщением (POST-redirect-GET, чтобы
 // обновление страницы не повторяло действие).
-func (h *Handler) setUserStatus(w http.ResponseWriter, r *http.Request, status domain.UserStatus, okMessage string) {
+func (h *Handler) setUserStatus(w http.ResponseWriter, r *http.Request, status domain.UserStatus, done notice) {
 	admin, ok := middleware.GetAdminFromContext(r.Context())
 	if !ok || admin == nil {
 		http.Redirect(w, r, loginPath, http.StatusSeeOther)
@@ -149,24 +149,24 @@ func (h *Handler) setUserStatus(w http.ResponseWriter, r *http.Request, status d
 	if err := h.users.SetStatus(r.Context(), admin.ID, userID, status, h.clientIP(r)); err != nil {
 		h.log.Error("changing user status",
 			slog.Int64("user_id", userID), slog.String("status", string(status)), slog.Any("error", err))
-		h.redirectToUser(w, r, userID, "", "Не удалось изменить статус")
+		h.redirectToUser(w, r, userID, "", noticeStatusFailed)
 		return
 	}
 
-	h.redirectToUser(w, r, userID, okMessage, "")
+	h.redirectToUser(w, r, userID, done, "")
 }
 
 // redirectToUser возвращает на карточку пользователя, передавая результат
 // действия query-параметрами. Флеш в query, а не в сессии: сессия админа
 // лежит в Redis и общая для вкладок — сообщение из одной вкладки всплыло бы
-// в другой.
-func (h *Handler) redirectToUser(w http.ResponseWriter, r *http.Request, userID int64, flash, errMsg string) {
+// в другой. В query едет ключ, а не текст — см. notice.
+func (h *Handler) redirectToUser(w http.ResponseWriter, r *http.Request, userID int64, flash, errKey notice) {
 	v := url.Values{}
 	if flash != "" {
-		v.Set("flash", flash)
+		v.Set("flash", string(flash))
 	}
-	if errMsg != "" {
-		v.Set("err", errMsg)
+	if errKey != "" {
+		v.Set("err", string(errKey))
 	}
 	target := "/admin/users/" + strconv.FormatInt(userID, 10)
 	if q := v.Encode(); q != "" {
@@ -191,11 +191,11 @@ func (h *Handler) UserLogoutAll(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.users.LogoutEverywhere(r.Context(), admin.ID, userID, h.clientIP(r)); err != nil {
 		h.log.Error("revoking user sessions", slog.Int64("user_id", userID), slog.Any("error", err))
-		h.redirectToUser(w, r, userID, "", "Не удалось отозвать сессии")
+		h.redirectToUser(w, r, userID, "", noticeRevokeFailed)
 		return
 	}
 
-	h.redirectToUser(w, r, userID, "Сессии отозваны (access-токен живёт ещё до 15 минут)", "")
+	h.redirectToUser(w, r, userID, noticeSessionsRevoked, "")
 }
 
 // UserDetailData — данные карточки. DisplayName/Username вычислены заранее:
@@ -249,8 +249,8 @@ func (h *Handler) UserDetail(w http.ResponseWriter, r *http.Request) {
 	h.render.Render(w, http.StatusOK, "user_detail", PageData{
 		Title: "Пользователь",
 		Admin: admin,
-		Flash: q.Get("flash"),
-		Error: q.Get("err"),
+		Flash: flashTexts[notice(q.Get("flash"))],
+		Error: errorTexts[notice(q.Get("err"))],
 		Data:  data,
 	})
 }
@@ -271,13 +271,13 @@ func (h *Handler) UserDelete(w http.ResponseWriter, r *http.Request) {
 
 	switch err := h.users.DeleteByAdmin(r.Context(), admin.ID, userID, h.clientIP(r)); {
 	case err == nil:
-		h.redirectToUser(w, r, userID, "Аккаунт удалён и анонимизирован", "")
+		h.redirectToUser(w, r, userID, noticeDeleted, "")
 	case errors.Is(err, service.ErrUserAlreadyDeleted):
-		h.redirectToUser(w, r, userID, "", "Аккаунт уже был удалён")
+		h.redirectToUser(w, r, userID, "", noticeAlreadyDeleted)
 	case errors.Is(err, service.ErrNotFound):
 		http.Redirect(w, r, "/admin/users", http.StatusSeeOther)
 	default:
 		h.log.Error("deleting user", slog.Int64("user_id", userID), slog.Any("error", err))
-		h.redirectToUser(w, r, userID, "", "Не удалось удалить аккаунт")
+		h.redirectToUser(w, r, userID, "", noticeDeleteFailed)
 	}
 }

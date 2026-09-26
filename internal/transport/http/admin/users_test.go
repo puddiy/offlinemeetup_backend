@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -388,6 +389,89 @@ func TestUserDetailHidesDeleteFromModerator(t *testing.T) {
 			} else {
 				require.NotContains(t, body, "Удалить аккаунт")
 			}
+		})
+	}
+}
+
+// Текст плашек не должен приходить из URL: иначе ссылка на НАСТОЯЩИЙ домен
+// панели с ?flash=«Сессия истекла, позвоните …» показывала бы модератору
+// поддельное «официальное» сообщение. XSS тут нет (html/template экранирует),
+// но для фишинга хватает и текста. Неизвестный ключ не рисуется вовсе.
+func TestUserDetailIgnoresArbitraryNoticeText(t *testing.T) {
+	svc := &stubUserSvc{user: &domain.User{ID: 42, Email: "a@x.io", Status: domain.UserStatusActive}}
+	h := newUsersHandler(t, svc)
+
+	const spoofFlash = "Сессия истекла. Позвоните +7-000"
+	const spoofErr = "Введите пароль повторно на evil.example"
+	target := "/admin/users/42?" + url.Values{"flash": {spoofFlash}, "err": {spoofErr}}.Encode()
+
+	rec := httptest.NewRecorder()
+	h.UserDetail(rec, getWithChiParam(target, "42", &domain.AdminUser{ID: 7, Role: domain.AdminRoleAdmin}))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	require.NotContains(t, body, spoofFlash)
+	require.NotContains(t, body, spoofErr)
+	require.NotContains(t, body, `class="flash"`)
+	require.NotContains(t, body, `class="error"`)
+}
+
+// Ключ успеха не должен рисоваться в красной плашке ошибки, и наоборот:
+// ?err=banned показал бы «Пользователь заблокирован» как ошибку.
+func TestUserDetailNoticeKeysDoNotCrossBanners(t *testing.T) {
+	svc := &stubUserSvc{user: &domain.User{ID: 42, Email: "a@x.io", Status: domain.UserStatusActive}}
+	h := newUsersHandler(t, svc)
+
+	rec := httptest.NewRecorder()
+	h.UserDetail(rec, getWithChiParam("/admin/users/42?err=banned&flash=delete_failed", "42",
+		&domain.AdminUser{ID: 7, Role: domain.AdminRoleAdmin}))
+
+	body := rec.Body.String()
+	require.NotContains(t, body, `class="flash"`)
+	require.NotContains(t, body, `class="error"`)
+}
+
+// Сквозная проверка каталога: каждое действие редиректит с ключом, и карточка
+// по этому Location показывает ожидаемый текст в нужной плашке. Ловит ключ,
+// для которого забыли завести текст — иначе плашка молча пропала бы.
+func TestUserActionNoticesRoundTrip(t *testing.T) {
+	admin := &domain.AdminUser{ID: 7, Role: domain.AdminRoleAdmin}
+	boom := errors.New("boom")
+
+	cases := []struct {
+		name   string
+		svc    *stubUserSvc
+		action func(h *Handler, w http.ResponseWriter, r *http.Request)
+		path   string
+		banner string
+		text   string
+	}{
+		{"ban", &stubUserSvc{}, (*Handler).UserBan, "ban", `class="flash"`, "Пользователь заблокирован"},
+		{"unban", &stubUserSvc{}, (*Handler).UserUnban, "unban", `class="flash"`, "Блокировка снята"},
+		{"ban failed", &stubUserSvc{statusErr: boom}, (*Handler).UserBan, "ban", `class="error"`, "Не удалось изменить статус"},
+		{"logout-all", &stubUserSvc{}, (*Handler).UserLogoutAll, "logout-all", `class="flash"`, "Сессии отозваны"},
+		{"logout-all failed", &stubUserSvc{logoutErr: boom}, (*Handler).UserLogoutAll, "logout-all", `class="error"`, "Не удалось отозвать сессии"},
+		{"delete", &stubUserSvc{}, (*Handler).UserDelete, "delete", `class="flash"`, "Аккаунт удалён и анонимизирован"},
+		{"delete twice", &stubUserSvc{deleteErr: service.ErrUserAlreadyDeleted}, (*Handler).UserDelete, "delete", `class="error"`, "Аккаунт уже был удалён"},
+		{"delete failed", &stubUserSvc{deleteErr: boom}, (*Handler).UserDelete, "delete", `class="error"`, "Не удалось удалить аккаунт"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newUsersHandler(t, tc.svc)
+
+			rec := httptest.NewRecorder()
+			tc.action(h, rec, postWithChiParam("/admin/users/42/"+tc.path, "42", admin))
+			require.Equal(t, http.StatusSeeOther, rec.Code)
+			location := rec.Header().Get("Location")
+
+			tc.svc.user = &domain.User{ID: 42, Email: "a@x.io", Status: domain.UserStatusActive}
+			rec = httptest.NewRecorder()
+			h.UserDetail(rec, getWithChiParam(location, "42", admin))
+
+			body := rec.Body.String()
+			require.Contains(t, body, tc.banner, location)
+			require.Contains(t, body, tc.text, location)
 		})
 	}
 }

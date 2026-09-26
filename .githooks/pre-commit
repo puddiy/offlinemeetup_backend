@@ -1,0 +1,35 @@
+#!/bin/sh
+# Pre-commit quality gate. Fast by design: runs the Go suite only when Go files
+# are actually staged. Enable once per clone with `make hooks`.
+# Bypass in an emergency with `git commit --no-verify`.
+set -u
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+
+fail() {
+	echo "pre-commit: $1" >&2
+	exit 1
+}
+
+go_files=$(printf '%s\n' "$staged" | grep '\.go$' || true)
+[ -n "$go_files" ] || exit 0
+
+echo "pre-commit: Go quality gate…"
+
+# gofmt only the STAGED files — never block a commit on pre-existing
+# unformatted code elsewhere in the tree.
+unformatted=""
+for f in $go_files; do
+	[ -f "$f" ] || continue
+	[ -n "$(gofmt -l "$f")" ] && unformatted="$unformatted $f"
+done
+if [ -n "$unformatted" ]; then
+	printf 'gofmt needed:%s\n' "$unformatted" >&2
+	fail "run 'gofmt -w'$unformatted"
+fi
+
+go build ./... || fail "go build failed"
+go vet ./... || fail "go vet failed"
+go test ./... || fail "go test failed"
+
+exit 0

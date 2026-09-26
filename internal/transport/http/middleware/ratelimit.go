@@ -27,24 +27,48 @@ return c
 // разных групп эндпоинтов по разным ключам. Лимитер best-effort: ошибка Redis
 // не блокирует запрос (fail-open), чтобы сбой кеша не положил аутентификацию.
 func RateLimiter(rdb *redis.Client, log *slog.Logger, scope string, limit int64, window time.Duration, trustProxy bool) func(http.Handler) http.Handler {
-	windowMs := window.Milliseconds()
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			key := "ratelimit:" + scope + ":" + clientIP(r, trustProxy)
-			count, err := rateLimitScript.Run(r.Context(), rdb, []string{key}, windowMs).Int64()
-			if err != nil {
-				log.Warn("rate limiter: redis error, allowing request", slog.Any("err", err))
-				next.ServeHTTP(w, r)
-				return
-			}
-			if count > limit {
-				w.Header().Set("Retry-After", strconv.Itoa(int(window.Seconds())))
-				http.Error(w, "too many requests", http.StatusTooManyRequests)
-				return
-			}
-			next.ServeHTTP(w, r)
+			enforceLimit(w, r, next, rdb, log, key, limit, window)
 		})
 	}
+}
+
+// UserRateLimiter — то же, что RateLimiter, но счётчик привязан к
+// аутентифицированному пользователю, а не к IP. Нужен там, где злоупотребляет
+// аккаунт, а не сеть: за NAT мобильного оператора один IP делят тысячи людей.
+//
+// Ставится ПОСЛЕ AuthMiddleware. Без пользователя в контексте отвечает 401 —
+// неверный порядок middleware даёт закрытую дверь, а не общий бакет на всех.
+func UserRateLimiter(rdb *redis.Client, log *slog.Logger, scope string, limit int64, window time.Duration) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			userID, ok := GetUserIDFromContext(r.Context())
+			if !ok {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			key := "ratelimit:" + scope + ":user:" + strconv.FormatInt(userID, 10)
+			enforceLimit(w, r, next, rdb, log, key, limit, window)
+		})
+	}
+}
+
+// enforceLimit — общий fixed-window счётчик обоих лимитеров.
+func enforceLimit(w http.ResponseWriter, r *http.Request, next http.Handler, rdb *redis.Client, log *slog.Logger, key string, limit int64, window time.Duration) {
+	count, err := rateLimitScript.Run(r.Context(), rdb, []string{key}, window.Milliseconds()).Int64()
+	if err != nil {
+		log.Warn("rate limiter: redis error, allowing request", slog.Any("err", err))
+		next.ServeHTTP(w, r)
+		return
+	}
+	if count > limit {
+		w.Header().Set("Retry-After", strconv.Itoa(int(window.Seconds())))
+		http.Error(w, "too many requests", http.StatusTooManyRequests)
+		return
+	}
+	next.ServeHTTP(w, r)
 }
 
 // clientIP извлекает IP клиента для ключа rate-limit. Заголовкам прокси

@@ -25,6 +25,11 @@ func Routes(h *Handler, rdb *redis.Client, log *slog.Logger, cfg *config.Config)
 	// второго рубежа CSRF. Безопасные методы (в т.ч. GET статики) проходят.
 	r.Use(mw.RequireSameOrigin(log))
 
+	// Страницы панели отдаются с Referrer-Policy: same-origin, иначе браузер
+	// шлёт на их формы `Origin: null` и RequireSameOrigin режет всё подряд.
+	// Подробности — в doc-комментарии SameOriginReferrer.
+	r.Use(mw.SameOriginReferrer)
+
 	// Статика (HTMX) — до авторизации: это не секрет, а отдавать её только
 	// залогиненным значило бы ломать страницу входа.
 	//

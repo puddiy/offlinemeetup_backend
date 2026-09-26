@@ -30,7 +30,10 @@ func newTestRoutes(t *testing.T) http.Handler {
 	cfg := &config.Config{Env: "local"}
 	h := NewHandler(&stubAuth{loginErr: service.ErrUnauthorized}, nil, &recordingAudit{}, rend, cfg, log)
 
+	// Глобальные заголовки — как в router.go: без них тест не увидел бы,
+	// что поддерево /admin обязано перетереть Referrer-Policy.
 	root := chi.NewRouter()
+	root.Use(middleware.SecurityHeaders)
 	root.Mount("/admin", Routes(h, rdb, log, cfg))
 	return root
 }
@@ -104,7 +107,10 @@ func newRoutesAs(t *testing.T, role domain.AdminRole, users AdminUserSvc) http.H
 	auth := &stubAuth{admin: &domain.AdminUser{ID: 7, Email: "root@x.io", Role: role, IsActive: true}}
 	h := NewHandler(auth, users, &recordingAudit{}, rend, cfg, log)
 
+	// Глобальные заголовки — как в router.go: без них тест не увидел бы,
+	// что поддерево /admin обязано перетереть Referrer-Policy.
 	root := chi.NewRouter()
+	root.Use(middleware.SecurityHeaders)
 	root.Mount("/admin", Routes(h, rdb, log, cfg))
 	return root
 }
@@ -154,4 +160,26 @@ func TestRoutesBanStaysAllowedForModerator(t *testing.T) {
 
 	require.Equal(t, http.StatusSeeOther, rec.Code)
 	require.Equal(t, int64(42), users.gotUserID)
+}
+
+// Регрессия: с глобальным Referrer-Policy: no-referrer браузер отправлял
+// формы панели с `Origin: null`, и RequireSameOrigin отвечал 403 на любой
+// POST — вход в админку из браузера был невозможен. curl этого не ловил,
+// потому что Origin там выставлялся руками.
+func TestRoutesAdminPagesUseSameOriginReferrer(t *testing.T) {
+	root := newTestRoutes(t)
+
+	for _, path := range []string{"/admin/login", "/admin/", "/admin/static/htmx.min.js"} {
+		rec := serve(root, httptest.NewRequest(http.MethodGet, path, nil))
+		require.Equal(t, "same-origin", rec.Header().Get("Referrer-Policy"), path)
+	}
+}
+
+// И обратная сторона: Origin: null по-прежнему отбивается — его шлют
+// sandboxed iframe и data:-страницы, ослаблять проверку ради него нельзя.
+func TestRoutesRejectNullOrigin(t *testing.T) {
+	root := newTestRoutes(t)
+
+	rec := serve(root, loginPost("null"))
+	require.Equal(t, http.StatusForbidden, rec.Code)
 }

@@ -325,25 +325,124 @@ func (r *MeetupRepo) Delete(ctx context.Context, id int64) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	_, err = tx.NewUpdate().
-		Model((*domain.Meetup)(nil)).
-		Set("status = ?", "cancelled").
-		Where("id = ?", id).
-		Exec(ctx)
-	if err != nil {
-		return err
-	}
-
-	_, err = tx.NewUpdate().
-		Model((*domain.Chat)(nil)).
-		Set("is_read_only = ?", true).
-		Where("meetup_id = ?", id).
-		Exec(ctx)
-	if err != nil {
+	if err := cancelMeetupsTx(ctx, tx, []int64{id}); err != nil {
 		return err
 	}
 
 	return tx.Commit()
+}
+
+// ErrMeetupNotActive — митапа нет или он уже отменён: отменять нечего.
+// Для модератора оба случая значат одно — «контента уже нет».
+var ErrMeetupNotActive = errors.New("meetup not found or not active")
+
+// CancelledMeetups — что отменила CancelActiveByCreatorTx. ParticipantIDs нужны
+// вызывающему, чтобы после коммита сбросить кэш списков чатов: у чатов
+// отменённых митапов поменялся is_read_only.
+type CancelledMeetups struct {
+	MeetupIDs      []int64
+	ParticipantIDs []int64
+}
+
+// cancelMeetupsTx — ЕДИНСТВЕННОЕ определение «отменить митап» в кодовой базе:
+// status='cancelled' плюс групповой чат только для чтения. Им пользуются
+// удаление создателем, отмена модератором и каскад бана/удаления аккаунта —
+// правило не должно разъехаться между ними.
+//
+// deleted_at (тег soft_delete) здесь сознательно НЕ ставится, как и раньше в
+// Delete: отменённый митап остаётся видимым в истории участников.
+func cancelMeetupsTx(ctx context.Context, idb bun.IDB, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if _, err := idb.NewUpdate().
+		Model((*domain.Meetup)(nil)).
+		Set("status = ?", "cancelled").
+		Where("id IN (?)", bun.In(ids)).
+		Exec(ctx); err != nil {
+		return fmt.Errorf("cancel meetups: %w", err)
+	}
+	if _, err := idb.NewUpdate().
+		Model((*domain.Chat)(nil)).
+		Set("is_read_only = ?", true).
+		Where("meetup_id IN (?)", bun.In(ids)).
+		Exec(ctx); err != nil {
+		return fmt.Errorf("freeze meetup chats: %w", err)
+	}
+	return nil
+}
+
+// meetupParticipantIDs — уникальные user_id участников перечисленных митапов.
+func meetupParticipantIDs(ctx context.Context, idb bun.IDB, meetupIDs []int64) ([]int64, error) {
+	var ids []int64
+	err := idb.NewSelect().
+		TableExpr("participants").
+		ColumnExpr("DISTINCT user_id").
+		Where("meetup_id IN (?)", bun.In(meetupIDs)).
+		Scan(ctx, &ids)
+	if err != nil {
+		return nil, fmt.Errorf("meetup participants: %w", err)
+	}
+	return ids, nil
+}
+
+// CancelTx отменяет митап по решению модератора внутри транзакции
+// вызывающего (там же пишется журнал). Возвращает user_id участников.
+//
+// Строка блокируется FOR UPDATE: два модератора, одновременно отменяющие
+// один митап, не должны оба получить «успех» и оба записать журнал.
+func (r *MeetupRepo) CancelTx(ctx context.Context, tx bun.IDB, meetupID int64) ([]int64, error) {
+	var ids []int64
+	err := tx.NewSelect().
+		Model((*domain.Meetup)(nil)).
+		Column("id").
+		Where("id = ?", meetupID).
+		Where("status = ?", "active").
+		For("UPDATE").
+		Scan(ctx, &ids)
+	if err != nil {
+		return nil, fmt.Errorf("lock meetup: %w", err)
+	}
+	if len(ids) == 0 {
+		return nil, ErrMeetupNotActive
+	}
+	if err := cancelMeetupsTx(ctx, tx, ids); err != nil {
+		return nil, err
+	}
+	return meetupParticipantIDs(ctx, tx, ids)
+}
+
+// CancelActiveByCreatorTx отменяет все митапы пользователя, которые ещё не
+// закончились: будущие И идущие. Вызывается при бане и удалении аккаунта
+// (решение продукта от 2026-09-26). Прошедшие не трогает. Разбан ничего не
+// восстанавливает.
+//
+// Ноль митапов — не ошибка, а пустой результат.
+func (r *MeetupRepo) CancelActiveByCreatorTx(ctx context.Context, tx bun.IDB, creatorID int64) (CancelledMeetups, error) {
+	var ids []int64
+	err := tx.NewSelect().
+		Model((*domain.Meetup)(nil)).
+		Column("id").
+		Where("creator_id = ?", creatorID).
+		Where("status = ?", "active").
+		Where("end_time > ?", time.Now()).
+		OrderExpr("id").
+		For("UPDATE").
+		Scan(ctx, &ids)
+	if err != nil {
+		return CancelledMeetups{}, fmt.Errorf("lock creator meetups: %w", err)
+	}
+	if len(ids) == 0 {
+		return CancelledMeetups{}, nil
+	}
+	if err := cancelMeetupsTx(ctx, tx, ids); err != nil {
+		return CancelledMeetups{}, err
+	}
+	participants, err := meetupParticipantIDs(ctx, tx, ids)
+	if err != nil {
+		return CancelledMeetups{}, err
+	}
+	return CancelledMeetups{MeetupIDs: ids, ParticipantIDs: participants}, nil
 }
 
 func (r *MeetupRepo) Join(ctx context.Context, meetupID, userID int64) error {

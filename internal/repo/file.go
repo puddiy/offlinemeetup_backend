@@ -21,6 +21,9 @@ var ErrFileNotOwned = errors.New("file is not owned by user")
 // ErrInvalidInput.
 var ErrFileNotImage = errors.New("file is not an image")
 
+// ErrFileNotFound — строки файла нет.
+var ErrFileNotFound = errors.New("file not found")
+
 type FileRepo struct {
 	db *bun.DB
 }
@@ -32,6 +35,40 @@ func NewFileRepo(db *bun.DB) *FileRepo {
 func (r *FileRepo) Create(ctx context.Context, file *domain.File) error {
 	_, err := r.db.NewInsert().Model(file).Exec(ctx)
 	return err
+}
+
+// GetByID отдаёт метаданные файла: ключ и бакет нужны, чтобы удалить объект
+// из S3 раньше строки.
+func (r *FileRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.File, error) {
+	f := new(domain.File)
+	err := r.db.NewSelect().Model(f).Where("id = ?", id).Scan(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrFileNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get file: %w", err)
+	}
+	return f, nil
+}
+
+// DeleteTx удаляет строку файла. Все ссылки на files объявлены
+// ON DELETE SET NULL (profile.avatar_file_id, meetups.cover_file_id,
+// messages.file_id), поэтому удаление строки само отвязывает файл отовсюду.
+//
+// Вызывать ТОЛЬКО после удаления объекта из S3: строка — единственный способ
+// найти объект, и без неё он навсегда останется доступным по публичной ссылке.
+//
+// tx == nil — работа вне транзакции (тот же приём, что у AuditRepo.Record).
+func (r *FileRepo) DeleteTx(ctx context.Context, tx bun.IDB, id uuid.UUID) error {
+	db := tx
+	if db == nil {
+		db = r.db
+	}
+	res, err := db.NewDelete().Model((*domain.File)(nil)).Where("id = ?", id).Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("delete file: %w", err)
+	}
+	return expectOneRow(res, ErrFileNotFound)
 }
 
 // fileOwnedBy reports whether the file exists and was uploaded by userID. Used

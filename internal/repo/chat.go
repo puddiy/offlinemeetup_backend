@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/domain"
 	"github.com/uptrace/bun"
 )
@@ -389,13 +390,52 @@ func (r *ChatRepo) DeleteMessage(ctx context.Context, chatID, msgID, editorID in
 	return existing.ChatID, targetIDs, nil
 }
 
+// DeletedMessage — результат админского удаления: чат для рассылки
+// messageDeleted, вложение для удаления из S3 и участники для сброса кэша.
+type DeletedMessage struct {
+	ChatID         int64
+	FileID         uuid.NullUUID
+	ParticipantIDs []int64
+}
+
+// DeleteMessageByAdminTx помечает сообщение удалённым по решению модератора.
+// В отличие от DeleteMessage, авторство НЕ проверяет: это и есть смысл
+// модерации. Работает в транзакции вызывающего, где пишется журнал.
+//
+// Нет сообщения или оно уже удалено — ErrMessageNotFound (из lockMessage).
+func (r *ChatRepo) DeleteMessageByAdminTx(ctx context.Context, tx bun.IDB, msgID int64) (*DeletedMessage, error) {
+	existing, err := lockMessage(ctx, tx, msgID)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := tx.NewUpdate().
+		Table("messages").
+		Set("deleted_at = now()").
+		Where("id = ?", msgID).
+		Exec(ctx); err != nil {
+		return nil, fmt.Errorf("admin delete message: %w", err)
+	}
+
+	ids, err := participantIDs(ctx, tx, existing.ChatID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &DeletedMessage{
+		ChatID:         existing.ChatID,
+		FileID:         existing.FileID,
+		ParticipantIDs: ids,
+	}, nil
+}
+
 // lockMessage selects a live (not soft-deleted) message FOR UPDATE, mapping a
 // missing or deleted row to ErrMessageNotFound.
 func lockMessage(ctx context.Context, tx bun.IDB, msgID int64) (*domain.Message, error) {
 	var m domain.Message
 	err := tx.NewSelect().
 		Model(&m).
-		Column("id", "chat_id", "sender_id", "deleted_at").
+		Column("id", "chat_id", "sender_id", "file_id", "deleted_at").
 		Where("id = ?", msgID).
 		For("UPDATE").
 		Scan(ctx)

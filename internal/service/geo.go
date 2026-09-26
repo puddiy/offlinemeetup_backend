@@ -61,7 +61,7 @@ func (s *GeoService) sendRequest(ctx context.Context, url string, bodyData any) 
 	if err != nil {
 		return nil, fmt.Errorf("dadata request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("dadata returned status: %d", resp.StatusCode)

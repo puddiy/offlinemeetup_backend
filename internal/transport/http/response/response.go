@@ -31,7 +31,9 @@ func JSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if payload != nil {
-		json.NewEncoder(w).Encode(payload)
+		// Статус уже отправлен, изменить ответ нечем: ошибка здесь — почти
+		// всегда отвалившийся клиент.
+		_ = json.NewEncoder(w).Encode(payload)
 	}
 }
 

@@ -98,13 +98,16 @@ func (c *Client) readPump(ctx context.Context, cancel context.CancelFunc) {
 		// so a graceful restart still stamps last_seen / emits userOffline instead
 		// of wedging on a channel whose reader (hub.Run) has already returned.
 		c.unregisterFromHub()
-		c.conn.Close()
+		_ = c.conn.Close() // второй Close (из writePump) вернёт ошибку — это штатно
 		c.markOffline()
 	}()
 
 	c.conn.SetReadLimit(maxMessageSize)
-	c.conn.SetReadDeadline(time.Now().Add(pongWait))
-	c.conn.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
+	// Ошибка дедлайна значит, что сокет уже мёртв — ReadMessage ниже её увидит.
+	_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
+	// Ошибку из pong-обработчика ReadMessage возвращает как свою, и readPump
+	// штатно сворачивает соединение, а не ждёт истечения старого дедлайна.
+	c.conn.SetPongHandler(func(string) error { return c.conn.SetReadDeadline(time.Now().Add(pongWait)) })
 
 	for {
 		_, message, err := c.conn.ReadMessage()
@@ -355,7 +358,7 @@ func (c *Client) writePump(ctx context.Context, cancel context.CancelFunc) {
 	defer func() {
 		ticker.Stop()
 		cancel()
-		c.conn.Close()
+		_ = c.conn.Close()
 	}()
 
 	for {
@@ -363,11 +366,14 @@ func (c *Client) writePump(ctx context.Context, cancel context.CancelFunc) {
 		case <-ctx.Done():
 			// Teardown: try to send a close frame, then exit. c.send is never
 			// closed (multiple senders), so this ctx signal is the only stop.
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+			// Best-effort: соединение закрывается в любом случае.
+			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 			return
 		case message := <-c.send:
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			// У gorilla SetWriteDeadline лишь запоминает значение и всегда
+			// возвращает nil; реальная ошибка придёт из WriteMessage.
+			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
 				return
 			}
@@ -384,7 +390,7 @@ func (c *Client) writePump(ctx context.Context, cancel context.CancelFunc) {
 				})
 			}
 
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}

@@ -58,7 +58,7 @@ func (b *redisBus) Subscribe(ctx context.Context, channels ...string) (<-chan []
 	out := make(chan []byte, 256)
 	go func() {
 		defer close(out)
-		defer pubsub.Close()
+		defer func() { _ = pubsub.Close() }()
 		redisCh := pubsub.Channel()
 		for {
 			select {

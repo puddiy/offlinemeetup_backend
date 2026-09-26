@@ -95,7 +95,7 @@ func TestClientIP(t *testing.T) {
 func TestRateLimiter_BlocksOverLimit(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
+	defer func() { _ = rdb.Close() }()
 
 	handler := RateLimiter(rdb, slog.New(slog.DiscardHandler), "test", 2, time.Minute, false)(
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }),
@@ -120,7 +120,7 @@ func TestRateLimiter_BlocksOverLimit(t *testing.T) {
 func TestRateLimiter_FailsOpenOnRedisError(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
+	defer func() { _ = rdb.Close() }()
 	mr.Close() // Redis unreachable → the limiter must fail open, not block traffic.
 
 	handler := RateLimiter(rdb, slog.New(slog.DiscardHandler), "test", 1, time.Minute, false)(

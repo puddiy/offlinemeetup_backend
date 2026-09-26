@@ -55,7 +55,7 @@ func (r *MeetupRepo) Create(ctx context.Context, meetup *domain.Meetup, chat *do
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// participants_count ведёт триггер БД (trg_participants_count) на вставку
 	// creator-участника ниже — руками не трогаем, иначе двойной счёт.
@@ -323,7 +323,7 @@ func (r *MeetupRepo) Delete(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	_, err = tx.NewUpdate().
 		Model((*domain.Meetup)(nil)).
@@ -351,7 +351,7 @@ func (r *MeetupRepo) Join(ctx context.Context, meetupID, userID int64) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	participant := &domain.Participant{
 		MeetupID: meetupID,
@@ -405,7 +405,7 @@ func (r *MeetupRepo) Leave(ctx context.Context, meetupID, userID int64) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	res, err := tx.NewDelete().
 		Table("participants").

@@ -52,7 +52,7 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		response.RespondError(w, service.ErrInvalidInput, h.log)
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	res, err := h.service.Upload(r.Context(), userID, header.Filename, header.Size, file)
 	if err != nil {

@@ -33,10 +33,10 @@ func makeToken(t *testing.T, secret string, userID int64, exp time.Time) string 
 func echoHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if id, ok := GetUserIDFromContext(r.Context()); ok {
-			fmt.Fprintf(w, "%d", id)
+			_, _ = fmt.Fprintf(w, "%d", id)
 			return
 		}
-		fmt.Fprint(w, "anon")
+		_, _ = fmt.Fprint(w, "anon")
 	}
 }
 

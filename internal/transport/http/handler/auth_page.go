@@ -26,5 +26,5 @@ func (h *AuthHandler) ServeTelegramLoginPage(w http.ResponseWriter, r *http.Requ
     </html>`
 
 	w.Header().Set("Content-Type", "text/html")
-	w.Write([]byte(html))
+	_, _ = w.Write([]byte(html))
 }

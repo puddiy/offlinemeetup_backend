@@ -86,7 +86,7 @@ func (r *UserRepo) CreateUserWithSocial(ctx context.Context, user *domain.User, 
 		return nil, err
 	}
 
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	_, err = tx.NewInsert().Model(user).Exec(ctx)
 	if err != nil {

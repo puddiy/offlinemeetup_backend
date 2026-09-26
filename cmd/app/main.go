@@ -41,7 +41,6 @@ func main() {
 		logger.Error("Failed to open database for migrations", slog.String("err", err.Error()))
 		os.Exit(1)
 	}
-	defer rawDB.Close()
 
 	goose.SetBaseFS(migrations.EmbedFS)
 	if err := goose.SetDialect("postgres"); err != nil {
@@ -54,12 +53,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Пул для goose нужен только на время миграций: закрываем сразу, а не
+	// держим второй пул соединений до остановки процесса.
+	if err := rawDB.Close(); err != nil {
+		logger.Warn("Closing migration database", slog.String("err", err.Error()))
+	}
+
 	database, err := db.New(cfg.DBDSN)
 	if err != nil {
 		logger.Error("Failed to connect to database", slog.String("err", err.Error()))
 		os.Exit(1)
 	}
-	defer database.Close()
+	defer func() {
+		if err := database.Close(); err != nil {
+			logger.Error("Closing database", slog.String("err", err.Error()))
+		}
+	}()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

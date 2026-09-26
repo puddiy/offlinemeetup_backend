@@ -146,7 +146,9 @@ func (r *ChatRepo) SaveMessage(ctx context.Context, msg *domain.Message) (*domai
 	if err != nil {
 		return nil, nil, false, err
 	}
-	defer tx.Rollback()
+	// После успешного Commit Rollback вернёт sql.ErrTxDone — это штатно,
+	// поэтому ошибку отката не проверяем (так же в EditMessage/DeleteMessage).
+	defer func() { _ = tx.Rollback() }()
 
 	// Идемпотентность: если сообщение с этим ключом уже создано — возвращаем его,
 	// НЕ перепроверяя read-only/членство заново (они выполнялись при создании) и
@@ -303,7 +305,7 @@ func (r *ChatRepo) EditMessage(ctx context.Context, chatID, msgID, editorID int6
 	if err != nil {
 		return nil, nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	existing, err := lockMessage(ctx, tx, msgID)
 	if err != nil {
@@ -352,7 +354,7 @@ func (r *ChatRepo) DeleteMessage(ctx context.Context, chatID, msgID, editorID in
 	if err != nil {
 		return 0, nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	existing, err := lockMessage(ctx, tx, msgID)
 	if err != nil {

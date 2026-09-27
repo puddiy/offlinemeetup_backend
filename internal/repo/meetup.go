@@ -318,18 +318,28 @@ func (r *MeetupRepo) Update(ctx context.Context, meetup *domain.Meetup, newTagID
 	})
 }
 
-func (r *MeetupRepo) Delete(ctx context.Context, id int64) error {
+// Delete отменяет митап по решению создателя и возвращает user_id его
+// участников: у их групповых чатов поменялся is_read_only, и вызывающий
+// обязан сбросить им кэш списка чатов.
+func (r *MeetupRepo) Delete(ctx context.Context, id int64) ([]int64, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	if err := cancelMeetupsTx(ctx, tx, []int64{id}); err != nil {
-		return err
+		return nil, err
+	}
+	participants, err := meetupParticipantIDs(ctx, tx, []int64{id})
+	if err != nil {
+		return nil, err
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return participants, nil
 }
 
 // ErrMeetupNotActive — митапа нет или он уже отменён: отменять нечего.

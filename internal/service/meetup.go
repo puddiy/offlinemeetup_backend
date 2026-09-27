@@ -22,7 +22,7 @@ type MeetupRepository interface {
 	GetByInviteToken(ctx context.Context, token uuid.UUID, currentUserID int64) (*domain.Meetup, error)
 	List(ctx context.Context, filter repo.MeetupQuery, currentUserID int64) ([]domain.Meetup, error)
 	Update(ctx context.Context, meetup *domain.Meetup, newTagIDs []int64) error
-	Delete(ctx context.Context, id int64) error
+	Delete(ctx context.Context, id int64) ([]int64, error)
 	Join(ctx context.Context, meetupID, userID int64) error
 	Leave(ctx context.Context, meetupID, userID int64) error
 }
@@ -33,6 +33,7 @@ type MeetupRepository interface {
 // here, at the consumer, and satisfied by *cache.ChatCache.
 type chatCacheInvalidator interface {
 	InvalidateUserChats(ctx context.Context, userID int64) error
+	InvalidateUserChatsMany(ctx context.Context, userIDs ...int64) error
 }
 
 // meetupCache кеширует инвариантный снапшот митапа и сбрасывает его при мутациях
@@ -267,11 +268,16 @@ func (s *MeetupService) DeleteMeetup(ctx context.Context, userID int64, meetupID
 		return ErrForbidden
 	}
 
-	if err := s.repo.Delete(ctx, meetupID); err != nil {
+	participants, err := s.repo.Delete(ctx, meetupID)
+	if err != nil {
 		return err
 	}
 
 	_ = s.meetupCache.InvalidateMeetup(ctx, meetupID) // best-effort; cache layer logs failures
+	// Групповой чат стал read-only — список чатов участников устарел.
+	if len(participants) > 0 {
+		_ = s.chatCache.InvalidateUserChatsMany(ctx, participants...) // best-effort
+	}
 	return nil
 }
 

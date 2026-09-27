@@ -60,11 +60,12 @@ func (mr *MockMeetupRepositoryMockRecorder) Create(ctx, meetup, chat, tagIDs any
 }
 
 // Delete mocks base method.
-func (m *MockMeetupRepository) Delete(ctx context.Context, id int64) error {
+func (m *MockMeetupRepository) Delete(ctx context.Context, id int64) ([]int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Delete", ctx, id)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].([]int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // Delete indicates an expected call of Delete.
@@ -211,6 +212,25 @@ func (m *MockchatCacheInvalidator) InvalidateUserChats(ctx context.Context, user
 func (mr *MockchatCacheInvalidatorMockRecorder) InvalidateUserChats(ctx, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InvalidateUserChats", reflect.TypeOf((*MockchatCacheInvalidator)(nil).InvalidateUserChats), ctx, userID)
+}
+
+// InvalidateUserChatsMany mocks base method.
+func (m *MockchatCacheInvalidator) InvalidateUserChatsMany(ctx context.Context, userIDs ...int64) error {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx}
+	for _, a := range userIDs {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "InvalidateUserChatsMany", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InvalidateUserChatsMany indicates an expected call of InvalidateUserChatsMany.
+func (mr *MockchatCacheInvalidatorMockRecorder) InvalidateUserChatsMany(ctx any, userIDs ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx}, userIDs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InvalidateUserChatsMany", reflect.TypeOf((*MockchatCacheInvalidator)(nil).InvalidateUserChatsMany), varargs...)
 }
 
 // MockmeetupCache is a mock of meetupCache interface.

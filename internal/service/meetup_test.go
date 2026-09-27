@@ -404,9 +404,30 @@ func TestMeetupService_DeleteMeetup(t *testing.T) {
 
 		mockRepo.EXPECT().GetForAuth(ctx, meetupID, userID).
 			Return(&repo.MeetupAuth{CreatorID: userID}, nil)
-		mockRepo.EXPECT().Delete(ctx, meetupID).Return(nil)
+		mockRepo.EXPECT().Delete(ctx, meetupID).Return(nil, nil)
 
 		require.NoError(t, svc.DeleteMeetup(ctx, userID, meetupID))
+	})
+
+	// Отмена переводит групповой чат в read-only, а список чатов кэшируется
+	// per-user. Без сброса участники ещё TTL минут видели бы чат открытым
+	// для записи и получали бы 409 на отправке.
+	t.Run("drops participants' cached chat lists", func(t *testing.T) {
+		mr, _, mockRepo, svc := setupMeetupTest(t)
+		defer mr.Close()
+
+		for _, id := range []int64{userID, 2} {
+			require.NoError(t, mr.Set(cache.UserChatsKey(id), `[{"id":7,"is_read_only":false}]`))
+		}
+
+		mockRepo.EXPECT().GetForAuth(ctx, meetupID, userID).
+			Return(&repo.MeetupAuth{CreatorID: userID}, nil)
+		mockRepo.EXPECT().Delete(ctx, meetupID).Return([]int64{userID, 2}, nil)
+
+		require.NoError(t, svc.DeleteMeetup(ctx, userID, meetupID))
+
+		require.False(t, mr.Exists(cache.UserChatsKey(userID)), "кэш чатов создателя обязан сброситься")
+		require.False(t, mr.Exists(cache.UserChatsKey(2)), "кэш чатов участника обязан сброситься")
 	})
 
 	t.Run("not owner", func(t *testing.T) {

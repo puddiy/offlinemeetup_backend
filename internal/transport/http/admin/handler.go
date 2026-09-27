@@ -21,16 +21,18 @@ type AdminAuthService interface {
 }
 
 type Handler struct {
-	auth   AdminAuthService
-	users  AdminUserSvc
-	audit  service.AuditRecorder
-	render *Renderer
-	cfg    *config.Config
-	log    *slog.Logger
+	auth       AdminAuthService
+	users      AdminUserSvc
+	moderation ModerationSvc
+	audit      service.AuditRecorder
+	render     *Renderer
+	ws         Broadcaster
+	cfg        *config.Config
+	log        *slog.Logger
 }
 
-func NewHandler(auth AdminAuthService, users AdminUserSvc, audit service.AuditRecorder, r *Renderer, cfg *config.Config, log *slog.Logger) *Handler {
-	return &Handler{auth: auth, users: users, audit: audit, render: r, cfg: cfg, log: log}
+func NewHandler(auth AdminAuthService, users AdminUserSvc, moderation ModerationSvc, audit service.AuditRecorder, r *Renderer, ws Broadcaster, cfg *config.Config, log *slog.Logger) *Handler {
+	return &Handler{auth: auth, users: users, moderation: moderation, audit: audit, render: r, ws: ws, cfg: cfg, log: log}
 }
 
 // secureCookies — ставить ли флаг Secure. В local его нельзя ставить

@@ -28,7 +28,7 @@ func newTestRoutes(t *testing.T) http.Handler {
 	rend, err := NewRenderer(log)
 	require.NoError(t, err)
 	cfg := &config.Config{Env: "local"}
-	h := NewHandler(&stubAuth{loginErr: service.ErrUnauthorized}, nil, &recordingAudit{}, rend, cfg, log)
+	h := NewHandler(&stubAuth{loginErr: service.ErrUnauthorized}, nil, nil, &recordingAudit{}, rend, nil, cfg, log)
 
 	// Глобальные заголовки — как в router.go: без них тест не увидел бы,
 	// что поддерево /admin обязано перетереть Referrer-Policy.
@@ -95,6 +95,12 @@ func TestRoutesLoginPostCrossOriginForbidden(t *testing.T) {
 // роли: stubAuth.Authenticate отдаёт его на любую cookie.
 func newRoutesAs(t *testing.T, role domain.AdminRole, users AdminUserSvc) http.Handler {
 	t.Helper()
+	return newRoutesWith(t, role, users, nil)
+}
+
+// newRoutesWith — то же, плюс сервис модерации.
+func newRoutesWith(t *testing.T, role domain.AdminRole, users AdminUserSvc, moderation ModerationSvc) http.Handler {
+	t.Helper()
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
@@ -105,7 +111,7 @@ func newRoutesAs(t *testing.T, role domain.AdminRole, users AdminUserSvc) http.H
 	cfg := &config.Config{Env: "local"}
 
 	auth := &stubAuth{admin: &domain.AdminUser{ID: 7, Email: "root@x.io", Role: role, IsActive: true}}
-	h := NewHandler(auth, users, &recordingAudit{}, rend, cfg, log)
+	h := NewHandler(auth, users, moderation, &recordingAudit{}, rend, nil, cfg, log)
 
 	// Глобальные заголовки — как в router.go: без них тест не увидел бы,
 	// что поддерево /admin обязано перетереть Referrer-Policy.

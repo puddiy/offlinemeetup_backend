@@ -74,6 +74,18 @@ func Routes(h *Handler, rdb *redis.Client, log *slog.Logger, cfg *config.Config)
 		// убирает её с глаз, POST'ом по URL обходится в один запрос.
 		r.With(mw.RequireAdminRole(domain.AdminRoleAdmin)).
 			Post("/users/{id}/delete", h.UserDelete)
+
+		// Модерация — работа модератора по домену (domain.AdminRoleModerator:
+		// разбор жалоб и скрытие контента), поэтому все действия открыты обеим
+		// ролям. Необратимость здесь страхует журнал: каждое действие пишется
+		// в admin_audit_log в той же транзакции, что и мутация.
+		r.Get("/reports", h.ReportsList)
+		r.Get("/reports/{id}", h.ReportDetail)
+		r.Post("/reports/{id}/dismiss", h.ReportDismiss)
+		r.Post("/reports/{id}/cancel-meetup", h.ReportCancelMeetup)
+		r.Post("/reports/{id}/delete-message", h.ReportDeleteMessage)
+		r.Post("/reports/{id}/remove-avatar", h.ReportRemoveAvatar)
+		r.Post("/reports/{id}/remove-cover", h.ReportRemoveCover)
 	})
 
 	return r

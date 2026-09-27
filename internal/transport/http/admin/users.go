@@ -156,11 +156,16 @@ func (h *Handler) setUserStatus(w http.ResponseWriter, r *http.Request, status d
 	h.redirectToUser(w, r, userID, done, "")
 }
 
-// redirectToUser возвращает на карточку пользователя, передавая результат
-// действия query-параметрами. Флеш в query, а не в сессии: сессия админа
-// лежит в Redis и общая для вкладок — сообщение из одной вкладки всплыло бы
-// в другой. В query едет ключ, а не текст — см. notice.
+// redirectToUser возвращает на карточку пользователя с результатом действия.
 func (h *Handler) redirectToUser(w http.ResponseWriter, r *http.Request, userID int64, flash, errKey notice) {
+	redirectWithNotice(w, r, "/admin/users/"+strconv.FormatInt(userID, 10), flash, errKey)
+}
+
+// redirectWithNotice — POST-redirect-GET с результатом действия в query.
+// Флеш в query, а не в сессии: сессия админа лежит в Redis и общая для
+// вкладок — сообщение из одной вкладки всплыло бы в другой. В query едет
+// ключ, а не текст — см. notice.
+func redirectWithNotice(w http.ResponseWriter, r *http.Request, target string, flash, errKey notice) {
 	v := url.Values{}
 	if flash != "" {
 		v.Set("flash", string(flash))
@@ -168,7 +173,6 @@ func (h *Handler) redirectToUser(w http.ResponseWriter, r *http.Request, userID 
 	if errKey != "" {
 		v.Set("err", string(errKey))
 	}
-	target := "/admin/users/" + strconv.FormatInt(userID, 10)
 	if q := v.Encode(); q != "" {
 		target += "?" + q
 	}

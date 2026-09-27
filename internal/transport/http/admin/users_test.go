@@ -50,7 +50,7 @@ func newUsersHandler(t *testing.T, svc *stubUserSvc) *Handler {
 	t.Helper()
 	r, err := NewRenderer(slog.New(slog.DiscardHandler))
 	require.NoError(t, err)
-	return NewHandler(&stubAuth{}, svc, &recordingAudit{}, r, &config.Config{Env: "local"}, slog.New(slog.DiscardHandler))
+	return NewHandler(&stubAuth{}, svc, nil, &recordingAudit{}, r, nil, &config.Config{Env: "local"}, slog.New(slog.DiscardHandler))
 }
 
 func usersRequest(target string) *http.Request {

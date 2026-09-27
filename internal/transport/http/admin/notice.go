@@ -18,10 +18,21 @@ const (
 	noticeSessionsRevoked notice = "sessions_revoked"
 	noticeDeleted         notice = "deleted"
 
+	noticeReportDismissed notice = "report_dismissed"
+	noticeMeetupCancelled notice = "meetup_cancelled"
+	noticeMessageDeleted  notice = "message_deleted"
+	noticeAvatarRemoved   notice = "avatar_removed"
+	noticeCoverRemoved    notice = "cover_removed"
+
 	noticeStatusFailed   notice = "status_failed"
 	noticeRevokeFailed   notice = "revoke_failed"
 	noticeAlreadyDeleted notice = "already_deleted"
 	noticeDeleteFailed   notice = "delete_failed"
+
+	noticeReportClosed     notice = "report_closed"
+	noticeTargetGone       notice = "target_gone"
+	noticeWrongAction      notice = "wrong_action"
+	noticeModerationFailed notice = "moderation_failed"
 )
 
 // Два каталога, а не один: ключ успеха в ?err= (или ошибки в ?flash=) не
@@ -33,11 +44,21 @@ var (
 		noticeUnbanned:        "Блокировка снята",
 		noticeSessionsRevoked: "Сессии отозваны (access-токен живёт ещё до 15 минут)",
 		noticeDeleted:         "Аккаунт удалён и анонимизирован",
+		noticeReportDismissed: "Жалоба отклонена",
+		noticeMeetupCancelled: "Митап отменён, чат переведён в режим чтения",
+		noticeMessageDeleted:  "Сообщение удалено у всех участников чата",
+		noticeAvatarRemoved:   "Аватар удалён",
+		noticeCoverRemoved:    "Обложка удалена",
 	}
 	errorTexts = map[notice]string{
 		noticeStatusFailed:   "Не удалось изменить статус",
 		noticeRevokeFailed:   "Не удалось отозвать сессии",
 		noticeAlreadyDeleted: "Аккаунт уже был удалён",
 		noticeDeleteFailed:   "Не удалось удалить аккаунт",
+
+		noticeReportClosed:     "Жалоба уже закрыта — возможно, её закрыло действие по другой жалобе на тот же контент",
+		noticeTargetGone:       "Контента уже нет: его удалил автор или другой модератор. Отклоните жалобу",
+		noticeWrongAction:      "Это действие не подходит для жалобы такого типа",
+		noticeModerationFailed: "Не удалось выполнить действие",
 	}
 )

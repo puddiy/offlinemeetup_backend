@@ -132,6 +132,21 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 	adminUserService := service.NewAdminUserService(userAdminRepo, refreshRepo, auditService,
 		profileCache, meetupCache, chatCache, meetupRepo, fileRepo, s3Client, log)
 	reportService := service.NewReportService(reportRepo)
+	moderationService := service.NewModerationService(service.ModerationDeps{
+		Reports:      reportRepo,
+		Meetups:      meetupRepo,
+		Chats:        chatRepo,
+		Profiles:     profileRepo,
+		UserMeetups:  userAdminRepo,
+		Files:        fileRepo,
+		S3:           s3Client,
+		Audit:        auditService,
+		MeetupCache:  meetupCache,
+		ProfileCache: profileCache,
+		ChatCache:    chatCache,
+		S3PublicURL:  cfg.S3PublicURL,
+		Log:          log,
+	})
 
 	authHandler := handler.NewAuthHandler(authService, log)
 	profileHandler := handler.NewProfileHandler(profileService, log)
@@ -151,7 +166,7 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 		log.Error("failed to parse admin templates", slog.String("error", err.Error()))
 		panic(fmt.Errorf("failed to parse admin templates: %w", err))
 	}
-	adminHandler := adminTransport.NewHandler(adminAuthService, adminUserService, auditService, adminRenderer, cfg, log)
+	adminHandler := adminTransport.NewHandler(adminAuthService, adminUserService, moderationService, auditService, adminRenderer, hub, cfg, log)
 
 	router := transport.NewRouter(authHandler, profileHandler, meetupHandler, tagHandler, geoHandler, chatHandler, wsHandler, fileHandler, adminHandler, accountHandler, reportHandler, authService, metricsHandler, rdb, log, cfg)
 

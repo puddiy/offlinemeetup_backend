@@ -20,7 +20,7 @@ var staticFS embed.FS
 // pages — страницы админки. Каждая парсится в ОТДЕЛЬНЫЙ template.Template
 // вместе с layout: страницы переопределяют один и тот же блок "content", и
 // в общем наборе последняя разобранная затёрла бы все предыдущие.
-var pages = []string{"login", "dashboard", "users", "user_detail"}
+var pages = []string{"login", "dashboard", "users", "user_detail", "reports", "report_detail"}
 
 // partialFiles — фрагменты, которые рендерятся БЕЗ layout. Нужны для
 // HTMX-ответов: обновить таблицу на месте, не перерисовывая страницу.

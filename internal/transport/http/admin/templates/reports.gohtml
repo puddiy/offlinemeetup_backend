@@ -1,0 +1,60 @@
+{{define "reports"}}{{template "layout" .}}{{end}}
+{{define "content"}}
+<div class="card">
+    <h2 style="margin-top:0">Жалобы</h2>
+
+    <form method="get" action="/admin/reports" style="display:flex;gap:10px;align-items:flex-end;margin-bottom:18px">
+        <label style="margin-bottom:0">
+            <span>Статус</span>
+            <select name="status" style="padding:9px 10px;border:1px solid var(--line);border-radius:6px">
+                <option value="open"{{if eq .Data.Status "open"}} selected{{end}}>открытые</option>
+                <option value="resolved"{{if eq .Data.Status "resolved"}} selected{{end}}>решённые</option>
+                <option value="dismissed"{{if eq .Data.Status "dismissed"}} selected{{end}}>отклонённые</option>
+                <option value="all"{{if eq .Data.Status "all"}} selected{{end}}>все</option>
+            </select>
+        </label>
+        <label style="margin-bottom:0">
+            <span>Тип</span>
+            <select name="type" style="padding:9px 10px;border:1px solid var(--line);border-radius:6px">
+                <option value="">любой</option>
+                <option value="meetup"{{if eq .Data.TargetType "meetup"}} selected{{end}}>митап</option>
+                <option value="message"{{if eq .Data.TargetType "message"}} selected{{end}}>сообщение</option>
+                <option value="user"{{if eq .Data.TargetType "user"}} selected{{end}}>пользователь</option>
+            </select>
+        </label>
+        <button type="submit">Показать</button>
+    </form>
+
+    {{with .Data}}
+    {{if .Page.Items}}
+    <table>
+        <thead>
+        <tr><th>Жалоба</th><th>Создана</th><th>Цель</th><th>Причина</th><th>Автор контента</th><th>Пожаловался</th><th>Статус</th></tr>
+        </thead>
+        <tbody>
+        {{range .Page.Items}}
+        <tr>
+            <td><a href="/admin/reports/{{.ID}}">#{{.ID}}</a></td>
+            <td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
+            <td>{{.TargetType}} #{{.TargetID}}</td>
+            <td>{{.ReasonTitle}}</td>
+            <td><a href="/admin/users/{{.TargetOwnerID}}">{{.TargetOwnerID}}</a></td>
+            <td><a href="/admin/users/{{.ReporterID}}">{{.ReporterID}}</a></td>
+            <td>{{.Status}}</td>
+        </tr>
+        {{end}}
+        </tbody>
+    </table>
+    <div style="display:flex;justify-content:space-between;margin-top:14px;color:var(--muted);font-size:13px">
+        <span>Всего: {{.Page.Total}} · страница {{.Page.CurrentPage}} из {{.Page.Pages}}</span>
+        <span>
+            {{if .Page.HasPrev}}<a href="{{.LinkWithOffset .Page.PrevOffset}}">← назад</a>{{end}}
+            {{if .Page.HasNext}}<a href="{{.LinkWithOffset .Page.NextOffset}}" style="margin-left:12px">вперёд →</a>{{end}}
+        </span>
+    </div>
+    {{else}}
+    <p style="color:var(--muted)">Жалоб нет.</p>
+    {{end}}
+    {{end}}
+</div>
+{{end}}

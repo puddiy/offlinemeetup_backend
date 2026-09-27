@@ -60,6 +60,8 @@ transport/http/handler  →  service          →  repo         →  Bun / Postg
 ### Admin panel (`/admin`)
 A separate circuit (own `admin_users` table, cookie session in Redis) for support staff: searchable, paginated user list and a user card; ban / unban (takes effect on the next request); force logout of all sessions; account deletion with anonymization. Irreversible actions are written to `admin_audit_log` in the same transaction as the mutation. Mobile clients can delete their own account via `DELETE /v1/account` (an App Store / Google Play requirement): the account is soft-deleted and anonymized (email cleared, password and social links removed, refresh tokens revoked), while messages stay in chat history under "Deleted user".
 
+Moderation: mobile clients report meetups, messages or users via `POST /v1/reports` (reasons come from `GET /v1/reports/reasons`). You can only report what you can see, and a hidden target returns the same 404 as a missing one; the limit is 10 reports per hour per user. Moderators work the queue at `/admin/reports`. Each report keeps a snapshot of the content at report time, and one action cancels the meetup, deletes the message (pushed to open chats as `messageDeleted`), or removes the avatar or cover from storage, closing every open report on that target in the same transaction as the audit entry. Banning or deleting an account cancels the user's upcoming and ongoing meetups; unbanning does not restore them.
+
 ### Real-time chat (WebSocket)
 * Hub-and-client model: send / edit / delete messages, replies, read receipts, typing indicators.
 * **Horizontally scalable across instances** via Redis Pub/Sub fan-out — the database is the source of truth and clients backfill history over REST on reconnect.

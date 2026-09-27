@@ -90,6 +90,7 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 	adminRepo := repo.NewAdminRepo(db)
 	userAdminRepo := repo.NewUserAdminRepo(db)
 	auditRepo := repo.NewAuditRepo(db)
+	reportRepo := repo.NewReportRepo(db)
 
 	// The presence of MAIL_SMTP_HOST decides, not APP_ENV: outside local/dev
 	// config.Load already refuses to start without the MAIL_SMTP_* secrets,
@@ -129,6 +130,7 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 	adminAuthService := service.NewAdminAuthService(adminRepo, adminSessions, cfg, log)
 	auditService := service.NewAuditService(auditRepo, log)
 	adminUserService := service.NewAdminUserService(userAdminRepo, refreshRepo, auditService, profileCache, meetupCache, log)
+	reportService := service.NewReportService(reportRepo)
 
 	authHandler := handler.NewAuthHandler(authService, log)
 	profileHandler := handler.NewProfileHandler(profileService, log)
@@ -139,6 +141,7 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 	wsHandler := websocket.NewWebSocketHandler(hub, log, chatService, profileService, presenceService, cfg.WSAllowedOrigins)
 	fileHandler := handler.NewFileHandler(fileService, cfg.MaxUploadSize, log)
 	accountHandler := handler.NewAccountHandler(adminUserService, log)
+	reportHandler := handler.NewReportHandler(reportService, log)
 
 	// Шаблоны разбираются здесь, на старте: битый шаблон обязан валить
 	// запуск, а не первый запрос модератора.
@@ -149,7 +152,7 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 	}
 	adminHandler := adminTransport.NewHandler(adminAuthService, adminUserService, auditService, adminRenderer, cfg, log)
 
-	router := transport.NewRouter(authHandler, profileHandler, meetupHandler, tagHandler, geoHandler, chatHandler, wsHandler, fileHandler, adminHandler, accountHandler, authService, metricsHandler, rdb, log, cfg)
+	router := transport.NewRouter(authHandler, profileHandler, meetupHandler, tagHandler, geoHandler, chatHandler, wsHandler, fileHandler, adminHandler, accountHandler, reportHandler, authService, metricsHandler, rdb, log, cfg)
 
 	return &App{
 		cfg:    cfg,

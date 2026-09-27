@@ -1635,6 +1635,109 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/reports": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Жалоба на митап, сообщение или пользователя. Жаловаться можно только на то, что вам видно: сообщение — из чата, где вы участник; приватный митап — если вы его участник. Иначе 404, неотличимый от несуществующего id. На свой контент жаловаться нельзя (400). Одна открытая жалоба на одну цель (повтор — 409). Лимит — 10 жалоб в час на пользователя (429).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Пожаловаться на контент",
+                "parameters": [
+                    {
+                        "description": "Жалоба",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateReportRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateReportResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ValidationErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Цель не найдена или не видна",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Открытая жалоба уже есть",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Слишком много жалоб",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/reports/reasons": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Список причин для экрана жалобы, в порядке показа. Клиент не хардкодит его: коды и подписи приходят с сервера.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Причины жалоб",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/dto.ReportReasonResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/tags": {
             "get": {
                 "description": "Возвращает справочник всех доступных тегов/интересов.",
@@ -1845,6 +1948,50 @@ const docTemplate = `{
                 },
                 "title": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.CreateReportRequest": {
+            "type": "object",
+            "properties": {
+                "comment": {
+                    "type": "string",
+                    "example": "Присылает рекламу казино"
+                },
+                "reason": {
+                    "type": "string",
+                    "enum": [
+                        "spam",
+                        "harassment",
+                        "hate",
+                        "sexual",
+                        "violence",
+                        "scam",
+                        "other"
+                    ],
+                    "example": "spam"
+                },
+                "target_id": {
+                    "type": "integer",
+                    "example": 42
+                },
+                "target_type": {
+                    "type": "string",
+                    "enum": [
+                        "meetup",
+                        "message",
+                        "user"
+                    ],
+                    "example": "message"
+                }
+            }
+        },
+        "dto.CreateReportResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer",
+                    "example": 17
                 }
             }
         },
@@ -2061,6 +2208,19 @@ const docTemplate = `{
             "properties": {
                 "registration_id": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.ReportReasonResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "example": "spam"
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Спам или реклама"
                 }
             }
         },

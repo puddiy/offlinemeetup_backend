@@ -95,6 +95,39 @@ definitions:
       title:
         type: string
     type: object
+  dto.CreateReportRequest:
+    properties:
+      comment:
+        example: Присылает рекламу казино
+        type: string
+      reason:
+        enum:
+        - spam
+        - harassment
+        - hate
+        - sexual
+        - violence
+        - scam
+        - other
+        example: spam
+        type: string
+      target_id:
+        example: 42
+        type: integer
+      target_type:
+        enum:
+        - meetup
+        - message
+        - user
+        example: message
+        type: string
+    type: object
+  dto.CreateReportResponse:
+    properties:
+      id:
+        example: 17
+        type: integer
+    type: object
   dto.ForgotPasswordRequest:
     properties:
       login:
@@ -234,6 +267,15 @@ definitions:
   dto.RegisterResponse:
     properties:
       registration_id:
+        type: string
+    type: object
+  dto.ReportReasonResponse:
+    properties:
+      code:
+        example: spam
+        type: string
+      title:
+        example: Спам или реклама
         type: string
     type: object
   dto.ResendCodeRequest:
@@ -1435,6 +1477,76 @@ paths:
       summary: Получить профиль пользователя
       tags:
       - Profile
+  /v1/reports:
+    post:
+      consumes:
+      - application/json
+      description: 'Жалоба на митап, сообщение или пользователя. Жаловаться можно
+        только на то, что вам видно: сообщение — из чата, где вы участник; приватный
+        митап — если вы его участник. Иначе 404, неотличимый от несуществующего id.
+        На свой контент жаловаться нельзя (400). Одна открытая жалоба на одну цель
+        (повтор — 409). Лимит — 10 жалоб в час на пользователя (429).'
+      parameters:
+      - description: Жалоба
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateReportRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.CreateReportResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ValidationErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Цель не найдена или не видна
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Открытая жалоба уже есть
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "429":
+          description: Слишком много жалоб
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Пожаловаться на контент
+      tags:
+      - reports
+  /v1/reports/reasons:
+    get:
+      description: 'Список причин для экрана жалобы, в порядке показа. Клиент не хардкодит
+        его: коды и подписи приходят с сервера.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.ReportReasonResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Причины жалоб
+      tags:
+      - reports
   /v1/tags:
     get:
       description: Возвращает справочник всех доступных тегов/интересов.

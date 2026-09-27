@@ -28,6 +28,7 @@ func NewRouter(authHandler *handler.AuthHandler,
 	fileHandler *handler.FileHandler,
 	adminHandler *adminTransport.Handler,
 	accountHandler *handler.AccountHandler,
+	reportHandler *handler.ReportHandler,
 	statusChecker authMiddleware.UserStatusChecker,
 	metricsHandler http.Handler,
 	rdb *redis.Client,
@@ -105,6 +106,12 @@ func NewRouter(authHandler *handler.AuthHandler,
 			r.Get("/auth/me", authHandler.Me)
 			r.Patch("/auth/password", authHandler.ChangePassword)
 			r.Delete("/account", accountHandler.DeleteMyAccount)
+
+			r.Get("/reports/reasons", reportHandler.Reasons)
+			// Лимит по ПОЛЬЗОВАТЕЛЮ, а не по IP: за NAT мобильного оператора
+			// один IP делят тысячи людей, а злоупотребляет конкретный аккаунт.
+			r.With(authMiddleware.UserRateLimiter(rdb, log, "reports", 10, time.Hour)).
+				Post("/reports", reportHandler.Create)
 
 			r.Route("/profile", func(r chi.Router) {
 				r.Get("/", profileHandler.GetMyProfile)

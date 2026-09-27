@@ -28,7 +28,8 @@
                 <button type="submit">Разблокировать</button>
             </form>
         {{else}}
-            <form method="post" action="/admin/users/{{$u.ID}}/ban">
+            <form method="post" action="/admin/users/{{$u.ID}}/ban"
+                  onsubmit="return confirm('Заблокировать пользователя? Все его будущие и идущие митапы будут отменены, разблокировка их не вернёт.')">
                 <button type="submit" style="background:var(--danger)">Заблокировать</button>
             </form>
         {{end}}

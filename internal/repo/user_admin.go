@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/domain"
 	"github.com/uptrace/bun"
 )
@@ -152,7 +153,8 @@ func (r *UserAdminRepo) SetStatusTx(ctx context.Context, tx bun.IDB, userID int6
 	return expectOneRow(res, ErrUserNotFound)
 }
 
-// SoftDeleteTx анонимизирует аккаунт внутри переданной транзакции.
+// SoftDeleteTx анонимизирует аккаунт внутри переданной транзакции и
+// возвращает id аватара, который был снят (невалидный — аватара не было).
 //
 // Что происходит и почему именно так:
 //   - users.deleted_at    — метка для админки;
@@ -164,7 +166,9 @@ func (r *UserAdminRepo) SetStatusTx(ctx context.Context, tx bun.IDB, userID int6
 //   - profile.username    — см. anonymizedUsername (занять его нельзя),
 //     display_name — «Удалённый пользователь»: DisplayNameOf покажет именно
 //     это в истории чатов, где реплики остаются;
-//   - profile.bio / avatar_file_id — вычищаются, это пользовательский контент;
+//   - profile.bio / avatar_file_id — вычищаются, это пользовательский контент.
+//     Сам файл аватара удаляет сервис ПОСЛЕ коммита (объект в S3 не
+//     транзакционен) — для этого id и возвращается;
 //   - user_credentials    — удаляются: пароля больше нет;
 //   - social_accounts     — удаляются, ИНАЧЕ повторный вход через Google
 //     нашёл бы пару (provider, social_id) и воскресил бы удалённый аккаунт;
@@ -172,7 +176,7 @@ func (r *UserAdminRepo) SetStatusTx(ctx context.Context, tx bun.IDB, userID int6
 //
 // Сообщения и прошедшие митапы НЕ трогаем: это чужая история переписки,
 // и вырезание реплик ломает контекст у собеседников.
-func (r *UserAdminRepo) SoftDeleteTx(ctx context.Context, tx bun.IDB, userID int64) error {
+func (r *UserAdminRepo) SoftDeleteTx(ctx context.Context, tx bun.IDB, userID int64) (uuid.NullUUID, error) {
 	now := time.Now().UTC()
 
 	res, err := tx.NewUpdate().
@@ -185,7 +189,7 @@ func (r *UserAdminRepo) SoftDeleteTx(ctx context.Context, tx bun.IDB, userID int
 		Where("deleted_at IS NULL").
 		Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("soft delete user: %w", err)
+		return uuid.NullUUID{}, fmt.Errorf("soft delete user: %w", err)
 	}
 	if rowsErr := expectOneRow(res, ErrUserNotFound); rowsErr != nil {
 		// Ноль строк здесь значит либо «нет такого», либо «уже удалён».
@@ -196,12 +200,27 @@ func (r *UserAdminRepo) SoftDeleteTx(ctx context.Context, tx bun.IDB, userID int
 			Where("id = ?", userID).
 			Exists(ctx)
 		if existsErr != nil {
-			return fmt.Errorf("soft delete user: %w", existsErr)
+			return uuid.NullUUID{}, fmt.Errorf("soft delete user: %w", existsErr)
 		}
 		if exists {
-			return ErrUserAlreadyDeleted
+			return uuid.NullUUID{}, ErrUserAlreadyDeleted
 		}
-		return rowsErr
+		return uuid.NullUUID{}, rowsErr
+	}
+
+	// Запоминаем аватар ДО того, как обнулим ссылку: иначе сервису нечем
+	// будет найти файл, и он останется в S3 навсегда. FOR UPDATE — чтобы
+	// параллельный PATCH /v1/profile не подменил аватар между чтением и
+	// обнулением.
+	var avatar uuid.NullUUID
+	err = tx.NewSelect().
+		Model((*domain.Profile)(nil)).
+		Column("avatar_file_id").
+		Where("user_id = ?", userID).
+		For("UPDATE").
+		Scan(ctx, &avatar)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return uuid.NullUUID{}, fmt.Errorf("lock profile: %w", err)
 	}
 
 	if _, err := tx.NewUpdate().
@@ -213,21 +232,21 @@ func (r *UserAdminRepo) SoftDeleteTx(ctx context.Context, tx bun.IDB, userID int
 		Set("updated_at = ?", now).
 		Where("user_id = ?", userID).
 		Exec(ctx); err != nil {
-		return fmt.Errorf("anonymize profile: %w", err)
+		return uuid.NullUUID{}, fmt.Errorf("anonymize profile: %w", err)
 	}
 
 	if _, err := tx.NewDelete().
 		Model((*domain.UserCredentials)(nil)).
 		Where("user_id = ?", userID).
 		Exec(ctx); err != nil {
-		return fmt.Errorf("drop credentials: %w", err)
+		return uuid.NullUUID{}, fmt.Errorf("drop credentials: %w", err)
 	}
 
 	if _, err := tx.NewDelete().
 		Model((*domain.SocialAccount)(nil)).
 		Where("user_id = ?", userID).
 		Exec(ctx); err != nil {
-		return fmt.Errorf("drop social accounts: %w", err)
+		return uuid.NullUUID{}, fmt.Errorf("drop social accounts: %w", err)
 	}
 
 	if _, err := tx.NewUpdate().
@@ -236,10 +255,10 @@ func (r *UserAdminRepo) SoftDeleteTx(ctx context.Context, tx bun.IDB, userID int
 		Where("user_id = ?", userID).
 		Where("revoked_at IS NULL").
 		Exec(ctx); err != nil {
-		return fmt.Errorf("revoke refresh tokens: %w", err)
+		return uuid.NullUUID{}, fmt.Errorf("revoke refresh tokens: %w", err)
 	}
 
-	return nil
+	return avatar, nil
 }
 
 // MeetupIDsForUser возвращает id всех митапов, в снапшот которых пользователь

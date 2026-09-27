@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strconv"
 
+	"github.com/google/uuid"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/domain"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/dto"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/repo"
@@ -31,7 +32,7 @@ type AdminUserRepository interface {
 	List(ctx context.Context, q repo.UserQuery) ([]domain.User, int, error)
 	GetDetail(ctx context.Context, id int64) (*domain.User, error)
 	SetStatusTx(ctx context.Context, tx bun.IDB, userID int64, status domain.UserStatus) error
-	SoftDeleteTx(ctx context.Context, tx bun.IDB, userID int64) error
+	SoftDeleteTx(ctx context.Context, tx bun.IDB, userID int64) (uuid.NullUUID, error)
 	RunInTx(ctx context.Context, fn func(tx bun.Tx) error) error
 	MeetupIDsForUser(ctx context.Context, userID int64) ([]int64, error)
 }
@@ -55,6 +56,19 @@ type adminMeetupCache interface {
 	InvalidateMeetup(ctx context.Context, meetupID int64) error
 }
 
+// adminChatCache — узкий срез ChatCache. У чатов отменённых митапов меняется
+// is_read_only, а список чатов кэшируется per-user — без сброса участники ещё
+// TTL минут видели бы чат доступным для записи.
+type adminChatCache interface {
+	InvalidateUserChatsMany(ctx context.Context, userIDs ...int64) error
+}
+
+// CreatorMeetupCanceller — отмена активных митапов пользователя при бане и
+// удалении аккаунта. Удовлетворяется *repo.MeetupRepo.
+type CreatorMeetupCanceller interface {
+	CancelActiveByCreatorTx(ctx context.Context, tx bun.IDB, creatorID int64) (repo.CancelledMeetups, error)
+}
+
 // AdminUserFilter — фильтр админского списка на языке транспорта.
 // Сервис маппит его в repo.UserQuery на своей границе, как ListMeetups
 // маппит dto.MeetupFilter в repo.MeetupQuery.
@@ -67,12 +81,16 @@ type AdminUserFilter struct {
 }
 
 type AdminUserService struct {
-	repo    AdminUserRepository
-	tokens  RefreshTokenRevoker
-	audit   AuditRecorder
-	profile adminProfileCache
-	meetups adminMeetupCache
-	log     *slog.Logger
+	repo           AdminUserRepository
+	tokens         RefreshTokenRevoker
+	audit          AuditRecorder
+	profile        adminProfileCache
+	meetups        adminMeetupCache
+	chats          adminChatCache
+	creatorMeetups CreatorMeetupCanceller
+	files          FileStore
+	s3             S3DeleteObjectAPI
+	log            *slog.Logger
 }
 
 func NewAdminUserService(
@@ -81,15 +99,23 @@ func NewAdminUserService(
 	audit AuditRecorder,
 	profile adminProfileCache,
 	meetups adminMeetupCache,
+	chats adminChatCache,
+	creatorMeetups CreatorMeetupCanceller,
+	files FileStore,
+	s3c S3DeleteObjectAPI,
 	log *slog.Logger,
 ) *AdminUserService {
 	return &AdminUserService{
-		repo:    r,
-		tokens:  tokens,
-		audit:   audit,
-		profile: profile,
-		meetups: meetups,
-		log:     log,
+		repo:           r,
+		tokens:         tokens,
+		audit:          audit,
+		profile:        profile,
+		meetups:        meetups,
+		chats:          chats,
+		creatorMeetups: creatorMeetups,
+		files:          files,
+		s3:             s3c,
+		log:            log,
 	}
 }
 
@@ -187,17 +213,33 @@ func (s *AdminUserService) SetStatus(ctx context.Context, actorID, userID int64,
 		return ErrInvalidInput
 	}
 
+	var cancelled repo.CancelledMeetups
 	err := s.repo.RunInTx(ctx, func(tx bun.Tx) error {
 		if err := s.repo.SetStatusTx(ctx, tx, userID, status); err != nil {
 			return err
 		}
+
+		details := map[string]any{"status": string(status)}
+		// Бан отменяет будущие и идущие митапы пользователя в той же
+		// транзакции (решение продукта от 2026-09-26): иначе в ленте висели
+		// бы встречи, на которые организатор уже не придёт. Разбан их НЕ
+		// восстанавливает, поэтому для active ветки нет.
+		if status == domain.UserStatusBanned {
+			c, err := s.creatorMeetups.CancelActiveByCreatorTx(ctx, tx, userID)
+			if err != nil {
+				return err
+			}
+			cancelled = c
+			details["cancelled_meetups"] = c.MeetupIDs
+		}
+
 		return s.audit.Record(ctx, tx, AuditEvent{
 			AdminID:    actorID,
 			Action:     AuditActionUnbanOrBan(status),
 			TargetType: "user",
 			TargetID:   strconv.FormatInt(userID, 10),
 			IP:         ip,
-			Details:    map[string]any{"status": string(status)},
+			Details:    details,
 		})
 	})
 	if errors.Is(err, repo.ErrUserNotFound) {
@@ -208,6 +250,7 @@ func (s *AdminUserService) SetStatus(ctx context.Context, actorID, userID int64,
 	}
 
 	s.invalidateProfile(ctx, userID)
+	s.invalidateCancelled(ctx, userID, cancelled)
 	return nil
 }
 
@@ -217,11 +260,6 @@ func (s *AdminUserService) SetStatus(ctx context.Context, actorID, userID int64,
 // Вызывается ПОСЛЕ коммита и ошибок не возвращает: аккаунт уже удалён,
 // откатывать нечего. Но каждый промах логируется — он означает, что имя и
 // аватар удалённого человека ещё сколько-то отдаются из кэша.
-//
-// Чего это НЕ делает: не удаляет сам файл аватара из S3. Удаления файлов в
-// проекте пока не существует (у FileRepo только Create, у S3-интерфейса
-// только PutObject) — оно появится в Milestone C вместе с модерацией, там же
-// имеет смысл добавить и уборку осиротевших объектов.
 func (s *AdminUserService) invalidateAfterDelete(ctx context.Context, userID int64) {
 	s.invalidateProfile(ctx, userID)
 
@@ -236,6 +274,41 @@ func (s *AdminUserService) invalidateAfterDelete(ctx context.Context, userID int
 		if err := s.meetups.InvalidateMeetup(ctx, id); err != nil {
 			s.log.Error("invalidating meetup cache after account deletion",
 				slog.Int64("user_id", userID), slog.Int64("meetup_id", id), slog.Any("error", err))
+		}
+	}
+}
+
+// invalidateCancelled сбрасывает снапшоты отменённых митапов и списки чатов
+// их участников: у чатов поменялся is_read_only. После коммита, best-effort.
+func (s *AdminUserService) invalidateCancelled(ctx context.Context, userID int64, c repo.CancelledMeetups) {
+	for _, id := range c.MeetupIDs {
+		if err := s.meetups.InvalidateMeetup(ctx, id); err != nil {
+			s.log.Error("invalidating cancelled meetup cache",
+				slog.Int64("user_id", userID), slog.Int64("meetup_id", id), slog.Any("error", err))
+		}
+	}
+	if len(c.ParticipantIDs) > 0 {
+		if err := s.chats.InvalidateUserChatsMany(ctx, c.ParticipantIDs...); err != nil {
+			s.log.Error("invalidating chat lists after meetup cancellation",
+				slog.Int64("user_id", userID), slog.Any("error", err))
+		}
+	}
+}
+
+// afterDelete — всё, что делается после коммита удаления аккаунта. Ошибок не
+// возвращает: аккаунт уже удалён, и откатывать нечего. Каждый промах
+// логируется: он значит, что личность удалённого ещё видна в кэше или
+// его аватар ещё лежит в S3.
+func (s *AdminUserService) afterDelete(ctx context.Context, userID int64, avatar uuid.NullUUID, cancelled repo.CancelledMeetups) {
+	s.invalidateAfterDelete(ctx, userID)
+	s.invalidateCancelled(ctx, userID, cancelled)
+
+	if avatar.Valid {
+		if err := purgeFile(ctx, s.files, s.s3, avatar.UUID); err != nil {
+			s.log.Error("purging avatar of deleted account",
+				slog.Int64("user_id", userID),
+				slog.String("file_id", avatar.UUID.String()),
+				slog.Any("error", err))
 		}
 	}
 }
@@ -310,24 +383,37 @@ func (s *AdminUserService) DeleteByAdmin(ctx context.Context, actorID, userID in
 		return ErrInvalidInput
 	}
 
+	var (
+		avatar    uuid.NullUUID
+		cancelled repo.CancelledMeetups
+	)
 	err := s.repo.RunInTx(ctx, func(tx bun.Tx) error {
-		if err := s.repo.SoftDeleteTx(ctx, tx, userID); err != nil {
+		a, err := s.repo.SoftDeleteTx(ctx, tx, userID)
+		if err != nil {
 			return err
 		}
+		avatar = a
+
+		c, err := s.creatorMeetups.CancelActiveByCreatorTx(ctx, tx, userID)
+		if err != nil {
+			return err
+		}
+		cancelled = c
+
 		return s.audit.Record(ctx, tx, AuditEvent{
 			AdminID:    actorID,
 			Action:     AuditActionUserDelete,
 			TargetType: "user",
 			TargetID:   strconv.FormatInt(userID, 10),
 			IP:         ip,
-			Details:    map[string]any{"by": "admin"},
+			Details:    map[string]any{"by": "admin", "cancelled_meetups": c.MeetupIDs},
 		})
 	})
 	if err != nil {
 		return s.mapDeleteError(err)
 	}
 
-	s.invalidateAfterDelete(ctx, userID)
+	s.afterDelete(ctx, userID, avatar, cancelled)
 	return nil
 }
 
@@ -342,15 +428,31 @@ func (s *AdminUserService) DeleteOwnAccount(ctx context.Context, userID int64) e
 		return ErrInvalidInput
 	}
 
+	var (
+		avatar    uuid.NullUUID
+		cancelled repo.CancelledMeetups
+	)
 	err := s.repo.RunInTx(ctx, func(tx bun.Tx) error {
-		return s.repo.SoftDeleteTx(ctx, tx, userID)
+		a, err := s.repo.SoftDeleteTx(ctx, tx, userID)
+		if err != nil {
+			return err
+		}
+		avatar = a
+
+		c, err := s.creatorMeetups.CancelActiveByCreatorTx(ctx, tx, userID)
+		if err != nil {
+			return err
+		}
+		cancelled = c
+		return nil
 	})
 	if err != nil {
 		return s.mapDeleteError(err)
 	}
 
-	s.invalidateAfterDelete(ctx, userID)
-	s.log.Info("account self-deleted", slog.Int64("user_id", userID))
+	s.afterDelete(ctx, userID, avatar, cancelled)
+	s.log.Info("account self-deleted",
+		slog.Int64("user_id", userID), slog.Int("cancelled_meetups", len(cancelled.MeetupIDs)))
 	return nil
 }
 

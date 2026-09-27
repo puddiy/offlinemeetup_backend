@@ -29,7 +29,7 @@ const (
 // читается как сбой.
 var (
 	flashTexts = map[notice]string{
-		noticeBanned:          "Пользователь заблокирован",
+		noticeBanned:          "Пользователь заблокирован, его активные митапы отменены",
 		noticeUnbanned:        "Блокировка снята",
 		noticeSessionsRevoked: "Сессии отозваны (access-токен живёт ещё до 15 минут)",
 		noticeDeleted:         "Аккаунт удалён и анонимизирован",

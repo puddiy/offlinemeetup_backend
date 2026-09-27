@@ -475,3 +475,16 @@ func TestUserActionNoticesRoundTrip(t *testing.T) {
 		})
 	}
 }
+
+// Бан теперь необратимо отменяет митапы — кнопка обязана об этом спросить.
+func TestUserDetailBanAsksConfirmation(t *testing.T) {
+	svc := &stubUserSvc{user: &domain.User{ID: 42, Email: "a@x.io", Status: domain.UserStatusActive}}
+	h := newUsersHandler(t, svc)
+
+	rec := httptest.NewRecorder()
+	h.UserDetail(rec, getWithChiParam("/admin/users/42", "42", &domain.AdminUser{ID: 7, Role: domain.AdminRoleModerator}))
+
+	body := rec.Body.String()
+	require.Contains(t, body, `action="/admin/users/42/ban"`)
+	require.Contains(t, body, "митапы будут отменены")
+}

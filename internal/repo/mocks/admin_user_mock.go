@@ -13,6 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	uuid "github.com/google/uuid"
 	domain "github.com/puddingtonnn/offlinemeetup_backend/internal/domain"
 	repo "github.com/puddingtonnn/offlinemeetup_backend/internal/repo"
 	bun "github.com/uptrace/bun"
@@ -118,11 +119,12 @@ func (mr *MockAdminUserRepositoryMockRecorder) SetStatusTx(ctx, tx, userID, stat
 }
 
 // SoftDeleteTx mocks base method.
-func (m *MockAdminUserRepository) SoftDeleteTx(ctx context.Context, tx bun.IDB, userID int64) error {
+func (m *MockAdminUserRepository) SoftDeleteTx(ctx context.Context, tx bun.IDB, userID int64) (uuid.NullUUID, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SoftDeleteTx", ctx, tx, userID)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(uuid.NullUUID)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // SoftDeleteTx indicates an expected call of SoftDeleteTx.
@@ -243,4 +245,86 @@ func (m *MockadminMeetupCache) InvalidateMeetup(ctx context.Context, meetupID in
 func (mr *MockadminMeetupCacheMockRecorder) InvalidateMeetup(ctx, meetupID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InvalidateMeetup", reflect.TypeOf((*MockadminMeetupCache)(nil).InvalidateMeetup), ctx, meetupID)
+}
+
+// MockadminChatCache is a mock of adminChatCache interface.
+type MockadminChatCache struct {
+	ctrl     *gomock.Controller
+	recorder *MockadminChatCacheMockRecorder
+	isgomock struct{}
+}
+
+// MockadminChatCacheMockRecorder is the mock recorder for MockadminChatCache.
+type MockadminChatCacheMockRecorder struct {
+	mock *MockadminChatCache
+}
+
+// NewMockadminChatCache creates a new mock instance.
+func NewMockadminChatCache(ctrl *gomock.Controller) *MockadminChatCache {
+	mock := &MockadminChatCache{ctrl: ctrl}
+	mock.recorder = &MockadminChatCacheMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockadminChatCache) EXPECT() *MockadminChatCacheMockRecorder {
+	return m.recorder
+}
+
+// InvalidateUserChatsMany mocks base method.
+func (m *MockadminChatCache) InvalidateUserChatsMany(ctx context.Context, userIDs ...int64) error {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx}
+	for _, a := range userIDs {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "InvalidateUserChatsMany", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InvalidateUserChatsMany indicates an expected call of InvalidateUserChatsMany.
+func (mr *MockadminChatCacheMockRecorder) InvalidateUserChatsMany(ctx any, userIDs ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx}, userIDs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InvalidateUserChatsMany", reflect.TypeOf((*MockadminChatCache)(nil).InvalidateUserChatsMany), varargs...)
+}
+
+// MockCreatorMeetupCanceller is a mock of CreatorMeetupCanceller interface.
+type MockCreatorMeetupCanceller struct {
+	ctrl     *gomock.Controller
+	recorder *MockCreatorMeetupCancellerMockRecorder
+	isgomock struct{}
+}
+
+// MockCreatorMeetupCancellerMockRecorder is the mock recorder for MockCreatorMeetupCanceller.
+type MockCreatorMeetupCancellerMockRecorder struct {
+	mock *MockCreatorMeetupCanceller
+}
+
+// NewMockCreatorMeetupCanceller creates a new mock instance.
+func NewMockCreatorMeetupCanceller(ctrl *gomock.Controller) *MockCreatorMeetupCanceller {
+	mock := &MockCreatorMeetupCanceller{ctrl: ctrl}
+	mock.recorder = &MockCreatorMeetupCancellerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockCreatorMeetupCanceller) EXPECT() *MockCreatorMeetupCancellerMockRecorder {
+	return m.recorder
+}
+
+// CancelActiveByCreatorTx mocks base method.
+func (m *MockCreatorMeetupCanceller) CancelActiveByCreatorTx(ctx context.Context, tx bun.IDB, creatorID int64) (repo.CancelledMeetups, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CancelActiveByCreatorTx", ctx, tx, creatorID)
+	ret0, _ := ret[0].(repo.CancelledMeetups)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CancelActiveByCreatorTx indicates an expected call of CancelActiveByCreatorTx.
+func (mr *MockCreatorMeetupCancellerMockRecorder) CancelActiveByCreatorTx(ctx, tx, creatorID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CancelActiveByCreatorTx", reflect.TypeOf((*MockCreatorMeetupCanceller)(nil).CancelActiveByCreatorTx), ctx, tx, creatorID)
 }

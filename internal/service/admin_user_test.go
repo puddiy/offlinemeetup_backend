@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/domain"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/repo"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/repo/mocks"
@@ -16,12 +17,16 @@ import (
 )
 
 type adminUserFixture struct {
-	repo   *mocks.MockAdminUserRepository
-	tokens *mocks.MockRefreshTokenRevoker
-	audit  *recordingAuditSvc
-	cache  *fakeProfileCache
-	mcache *fakeMeetupCache
-	svc    *AdminUserService
+	repo    *mocks.MockAdminUserRepository
+	tokens  *mocks.MockRefreshTokenRevoker
+	creator *mocks.MockCreatorMeetupCanceller
+	files   *mocks.MockFileStore
+	s3      *fakeS3Deleter
+	audit   *recordingAuditSvc
+	cache   *fakeProfileCache
+	mcache  *fakeMeetupCache
+	ccache  *fakeChatCache
+	svc     *AdminUserService
 }
 
 func setupAdminUserTest(t *testing.T) *adminUserFixture {
@@ -29,13 +34,18 @@ func setupAdminUserTest(t *testing.T) *adminUserFixture {
 	ctrl := gomock.NewController(t)
 
 	f := &adminUserFixture{
-		repo:   mocks.NewMockAdminUserRepository(ctrl),
-		tokens: mocks.NewMockRefreshTokenRevoker(ctrl),
-		audit:  &recordingAuditSvc{},
-		cache:  &fakeProfileCache{},
-		mcache: &fakeMeetupCache{},
+		repo:    mocks.NewMockAdminUserRepository(ctrl),
+		tokens:  mocks.NewMockRefreshTokenRevoker(ctrl),
+		creator: mocks.NewMockCreatorMeetupCanceller(ctrl),
+		files:   mocks.NewMockFileStore(ctrl),
+		s3:      &fakeS3Deleter{},
+		audit:   &recordingAuditSvc{},
+		cache:   &fakeProfileCache{},
+		mcache:  &fakeMeetupCache{},
+		ccache:  &fakeChatCache{},
 	}
-	f.svc = NewAdminUserService(f.repo, f.tokens, f.audit, f.cache, f.mcache, slog.New(slog.DiscardHandler))
+	f.svc = NewAdminUserService(f.repo, f.tokens, f.audit, f.cache, f.mcache, f.ccache,
+		f.creator, f.files, f.s3, slog.New(slog.DiscardHandler))
 	return f
 }
 
@@ -183,6 +193,20 @@ func (c *fakeMeetupCache) InvalidateMeetup(_ context.Context, meetupID int64) er
 	return nil
 }
 
+// fakeChatCache считает сброшенные списки чатов.
+type fakeChatCache struct{ invalidated []int64 }
+
+func (c *fakeChatCache) InvalidateUserChatsMany(_ context.Context, userIDs ...int64) error {
+	c.invalidated = append(c.invalidated, userIDs...)
+	return nil
+}
+
+// expectNothingCancelled — у пользователя нет активных митапов.
+func expectNothingCancelled(f *adminUserFixture, userID int64) {
+	f.creator.EXPECT().CancelActiveByCreatorTx(gomock.Any(), gomock.Any(), userID).
+		Return(repo.CancelledMeetups{}, nil)
+}
+
 // fakeTx — минимальная заглушка bun.Tx для проверки, что мутация и запись
 // журнала попали в ОДНУ транзакцию. RunInTx у мока просто исполняет
 // замыкание, передавая нулевую bun.Tx.
@@ -200,6 +224,7 @@ func TestSetStatusBansAndAudits(t *testing.T) {
 	f.repo.EXPECT().
 		SetStatusTx(gomock.Any(), gomock.Any(), int64(42), domain.UserStatusBanned).
 		Return(nil)
+	expectNothingCancelled(f, 42)
 
 	err := f.svc.SetStatus(context.Background(), 7, 42, domain.UserStatusBanned, "10.0.0.1")
 
@@ -253,6 +278,7 @@ func TestSetStatusRollsBackWhenAuditFails(t *testing.T) {
 
 	expectRunInTx(f)
 	f.repo.EXPECT().SetStatusTx(gomock.Any(), gomock.Any(), int64(42), gomock.Any()).Return(nil)
+	expectNothingCancelled(f, 42)
 
 	err := f.svc.SetStatus(context.Background(), 7, 42, domain.UserStatusBanned, "")
 
@@ -296,7 +322,8 @@ func TestDeleteByAdminSoftDeletesAndAudits(t *testing.T) {
 	f := setupAdminUserTest(t)
 
 	expectRunInTx(f)
-	f.repo.EXPECT().SoftDeleteTx(gomock.Any(), gomock.Any(), int64(42)).Return(nil)
+	f.repo.EXPECT().SoftDeleteTx(gomock.Any(), gomock.Any(), int64(42)).Return(uuid.NullUUID{}, nil)
+	expectNothingCancelled(f, 42)
 	f.repo.EXPECT().MeetupIDsForUser(gomock.Any(), int64(42)).Return([]int64{11, 22}, nil)
 
 	err := f.svc.DeleteByAdmin(context.Background(), 7, 42, "10.0.0.1")
@@ -316,7 +343,7 @@ func TestDeleteByAdminTranslatesAlreadyDeleted(t *testing.T) {
 
 	expectRunInTx(f)
 	f.repo.EXPECT().SoftDeleteTx(gomock.Any(), gomock.Any(), int64(42)).
-		Return(repo.ErrUserAlreadyDeleted)
+		Return(uuid.NullUUID{}, repo.ErrUserAlreadyDeleted)
 
 	err := f.svc.DeleteByAdmin(context.Background(), 7, 42, "")
 
@@ -328,7 +355,7 @@ func TestDeleteByAdminTranslatesNotFound(t *testing.T) {
 	f := setupAdminUserTest(t)
 
 	expectRunInTx(f)
-	f.repo.EXPECT().SoftDeleteTx(gomock.Any(), gomock.Any(), int64(42)).Return(repo.ErrUserNotFound)
+	f.repo.EXPECT().SoftDeleteTx(gomock.Any(), gomock.Any(), int64(42)).Return(uuid.NullUUID{}, repo.ErrUserNotFound)
 
 	require.ErrorIs(t, f.svc.DeleteByAdmin(context.Background(), 7, 42, ""), ErrNotFound)
 }
@@ -339,7 +366,8 @@ func TestDeleteOwnAccountDoesNotTouchAdminAudit(t *testing.T) {
 	f := setupAdminUserTest(t)
 
 	expectRunInTx(f)
-	f.repo.EXPECT().SoftDeleteTx(gomock.Any(), gomock.Any(), int64(42)).Return(nil)
+	f.repo.EXPECT().SoftDeleteTx(gomock.Any(), gomock.Any(), int64(42)).Return(uuid.NullUUID{}, nil)
+	expectNothingCancelled(f, 42)
 	f.repo.EXPECT().MeetupIDsForUser(gomock.Any(), int64(42)).Return([]int64{11}, nil)
 
 	err := f.svc.DeleteOwnAccount(context.Background(), 42)
@@ -397,10 +425,114 @@ func TestDeleteSurvivesMeetupLookupFailure(t *testing.T) {
 	f := setupAdminUserTest(t)
 
 	expectRunInTx(f)
-	f.repo.EXPECT().SoftDeleteTx(gomock.Any(), gomock.Any(), int64(42)).Return(nil)
+	f.repo.EXPECT().SoftDeleteTx(gomock.Any(), gomock.Any(), int64(42)).Return(uuid.NullUUID{}, nil)
+	expectNothingCancelled(f, 42)
 	f.repo.EXPECT().MeetupIDsForUser(gomock.Any(), int64(42)).Return(nil, errors.New("db down"))
 
 	require.NoError(t, f.svc.DeleteOwnAccount(context.Background(), 42))
 	require.Equal(t, []int64{42}, f.cache.invalidated)
 	require.Empty(t, f.mcache.invalidated)
+}
+
+// Бан отменяет активные митапы В ТОЙ ЖЕ транзакции и пишет их в журнал;
+// после коммита сбрасываются снапшоты митапов и списки чатов участников.
+func TestBanCancelsActiveMeetups(t *testing.T) {
+	f := setupAdminUserTest(t)
+
+	expectRunInTx(f)
+	f.repo.EXPECT().SetStatusTx(gomock.Any(), gomock.Any(), int64(42), domain.UserStatusBanned).Return(nil)
+	f.creator.EXPECT().CancelActiveByCreatorTx(gomock.Any(), gomock.Any(), int64(42)).
+		Return(repo.CancelledMeetups{MeetupIDs: []int64{5, 6}, ParticipantIDs: []int64{42, 9}}, nil)
+
+	require.NoError(t, f.svc.SetStatus(context.Background(), 7, 42, domain.UserStatusBanned, ""))
+
+	require.Equal(t, []int64{5, 6}, f.audit.events[0].Details["cancelled_meetups"])
+	require.Equal(t, []int64{5, 6}, f.mcache.invalidated)
+	require.Equal(t, []int64{42, 9}, f.ccache.invalidated)
+}
+
+// Разбан НЕ восстанавливает митапы и вообще их не трогает: мок без
+// ожидания провалит тест, если отмену вызовут.
+func TestUnbanDoesNotTouchMeetups(t *testing.T) {
+	f := setupAdminUserTest(t)
+
+	expectRunInTx(f)
+	f.repo.EXPECT().SetStatusTx(gomock.Any(), gomock.Any(), int64(42), domain.UserStatusActive).Return(nil)
+
+	require.NoError(t, f.svc.SetStatus(context.Background(), 7, 42, domain.UserStatusActive, ""))
+	require.Empty(t, f.mcache.invalidated)
+}
+
+// Отмена упала — откатывается и бан: не бывает забаненного пользователя с
+// живыми митапами «потому что вторая половина не прошла».
+func TestBanRollsBackWhenCancelFails(t *testing.T) {
+	f := setupAdminUserTest(t)
+
+	expectRunInTx(f)
+	f.repo.EXPECT().SetStatusTx(gomock.Any(), gomock.Any(), int64(42), domain.UserStatusBanned).Return(nil)
+	f.creator.EXPECT().CancelActiveByCreatorTx(gomock.Any(), gomock.Any(), int64(42)).
+		Return(repo.CancelledMeetups{}, errors.New("lock timeout"))
+
+	require.Error(t, f.svc.SetStatus(context.Background(), 7, 42, domain.UserStatusBanned, ""))
+	require.Empty(t, f.audit.events)
+	require.Empty(t, f.cache.invalidated)
+}
+
+// Удаление аккаунта: митапы отменяются, аватар удаляется из S3 и из files.
+func TestDeleteByAdminCancelsMeetupsAndPurgesAvatar(t *testing.T) {
+	f := setupAdminUserTest(t)
+	avatar := uuid.New()
+
+	expectRunInTx(f)
+	f.repo.EXPECT().SoftDeleteTx(gomock.Any(), gomock.Any(), int64(42)).
+		Return(uuid.NullUUID{UUID: avatar, Valid: true}, nil)
+	f.creator.EXPECT().CancelActiveByCreatorTx(gomock.Any(), gomock.Any(), int64(42)).
+		Return(repo.CancelledMeetups{MeetupIDs: []int64{5}, ParticipantIDs: []int64{42}}, nil)
+	f.repo.EXPECT().MeetupIDsForUser(gomock.Any(), int64(42)).Return(nil, nil)
+	f.files.EXPECT().GetByID(gomock.Any(), avatar).
+		Return(&domain.File{ID: avatar, Bucket: "media", Key: "uploads/av.png"}, nil)
+	f.files.EXPECT().DeleteTx(gomock.Any(), gomock.Nil(), avatar).Return(nil)
+
+	require.NoError(t, f.svc.DeleteByAdmin(context.Background(), 7, 42, ""))
+
+	require.Equal(t, []string{"media/uploads/av.png"}, f.s3.deleted)
+	require.Contains(t, f.mcache.invalidated, int64(5))
+	require.Equal(t, []int64{5}, f.audit.events[0].Details["cancelled_meetups"])
+}
+
+// Сбой S3 после коммита не превращает удалённый аккаунт в ошибку: удаление
+// состоялось. Строка файла остаётся — по ней объект можно дочистить.
+func TestDeleteSurvivesAvatarPurgeFailure(t *testing.T) {
+	f := setupAdminUserTest(t)
+	f.s3.err = errors.New("s3 down")
+	avatar := uuid.New()
+
+	expectRunInTx(f)
+	f.repo.EXPECT().SoftDeleteTx(gomock.Any(), gomock.Any(), int64(42)).
+		Return(uuid.NullUUID{UUID: avatar, Valid: true}, nil)
+	expectNothingCancelled(f, 42)
+	f.repo.EXPECT().MeetupIDsForUser(gomock.Any(), int64(42)).Return(nil, nil)
+	f.files.EXPECT().GetByID(gomock.Any(), avatar).
+		Return(&domain.File{ID: avatar, Bucket: "media", Key: "k"}, nil)
+	// DeleteTx не ожидается.
+
+	require.NoError(t, f.svc.DeleteByAdmin(context.Background(), 7, 42, ""))
+}
+
+// Самоудаление тоже отменяет митапы: пользователь, удаливший аккаунт,
+// не придёт на свою встречу.
+func TestDeleteOwnAccountCancelsMeetups(t *testing.T) {
+	f := setupAdminUserTest(t)
+
+	expectRunInTx(f)
+	f.repo.EXPECT().SoftDeleteTx(gomock.Any(), gomock.Any(), int64(42)).Return(uuid.NullUUID{}, nil)
+	f.creator.EXPECT().CancelActiveByCreatorTx(gomock.Any(), gomock.Any(), int64(42)).
+		Return(repo.CancelledMeetups{MeetupIDs: []int64{8}, ParticipantIDs: []int64{42, 3}}, nil)
+	f.repo.EXPECT().MeetupIDsForUser(gomock.Any(), int64(42)).Return(nil, nil)
+
+	require.NoError(t, f.svc.DeleteOwnAccount(context.Background(), 42))
+
+	require.Contains(t, f.mcache.invalidated, int64(8))
+	require.Equal(t, []int64{42, 3}, f.ccache.invalidated)
+	require.Empty(t, f.audit.events, "самоудаление в журнал админов не пишется")
 }

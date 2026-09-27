@@ -24,4 +24,12 @@ var (
 	// существующем id, а мобильный клиент мог показать осмысленный текст
 	// на повторный DELETE /v1/account.
 	ErrUserAlreadyDeleted = errors.New("user already deleted")
+
+	// ErrReportClosed — жалоба уже закрыта: двойной клик или её закрыло
+	// действие по другой жалобе на ту же цель. Модератору — «уже закрыта»,
+	// не ошибка сервера.
+	ErrReportClosed = errors.New("report already closed")
+	// ErrTargetGone — контента, на который жалоба, уже нет: автор удалил
+	// сообщение, митап отменён, аватар снят. Жалобу остаётся отклонить.
+	ErrTargetGone = errors.New("report target is gone")
 )

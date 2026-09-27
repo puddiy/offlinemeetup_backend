@@ -20,6 +20,12 @@ const (
 	AuditActionUserUnban  = "user.unban"
 	AuditActionUserLogout = "user.logout_all"
 	AuditActionUserDelete = "user.delete"
+
+	AuditActionReportDismiss = "report.dismiss"
+	AuditActionMeetupCancel  = "meetup.cancel"
+	AuditActionMessageDelete = "message.delete"
+	AuditActionAvatarRemove  = "user.avatar_remove"
+	AuditActionCoverRemove   = "meetup.cover_remove"
 )
 
 // AuditEvent — то, что вызывающий хочет записать в журнал. Отдельный тип, а

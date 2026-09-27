@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/dto"
+	"github.com/puddingtonnn/offlinemeetup_backend/internal/safego"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/service"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/transport/http/response"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/transport/websocket"
@@ -189,7 +190,10 @@ func (h *ChatHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	// рассылаем его снова и отвечаем 200 с существующим вместо 201.
 	status := http.StatusCreated
 	if created {
-		go h.broadcastMessageEvent(websocket.EventNewMessage, msg, targetIDs)
+		// Рассылка асинхронна, чтобы не держать ответ на публикации в Redis, —
+		// но через safego: паника в голой горутине не ловится Recoverer'ом
+		// роутера и роняет весь инстанс по действию одного пользователя.
+		safego.Go(h.log, func() { h.broadcastMessageEvent(websocket.EventNewMessage, msg, targetIDs) })
 	} else {
 		status = http.StatusOK
 	}
@@ -241,7 +245,7 @@ func (h *ChatHandler) EditMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	go h.broadcastMessageEvent(websocket.EventMessageEdited, msg, targetIDs)
+	safego.Go(h.log, func() { h.broadcastMessageEvent(websocket.EventMessageEdited, msg, targetIDs) })
 
 	response.JSON(w, http.StatusOK, msg)
 }
@@ -282,7 +286,7 @@ func (h *ChatHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	payload, _ := json.Marshal(websocket.WSMessageDeletedPayload{ChatID: chatID, MessageID: messageID})
-	go h.broadcastRawEvent(websocket.EventMessageDeleted, payload, targetIDs)
+	safego.Go(h.log, func() { h.broadcastRawEvent(websocket.EventMessageDeleted, payload, targetIDs) })
 
 	w.WriteHeader(http.StatusNoContent)
 }

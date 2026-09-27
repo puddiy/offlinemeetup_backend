@@ -16,41 +16,38 @@ import (
 )
 
 type moderationFixture struct {
-	reports  *mocks.MockReportRepository
-	meetups  *mocks.MockModerationMeetupRepository
-	chats    *mocks.MockModerationChatRepository
-	profiles *mocks.MockModerationProfileRepository
-	users    *mocks.MockUserMeetupLister
-	files    *mocks.MockFileStore
-	s3       *fakeS3Deleter
-	audit    *recordingAuditSvc
-	mcache   *fakeMeetupCache
-	pcache   *fakeProfileCache
-	ccache   *fakeChatCache
-	svc      *ModerationService
+	reports *mocks.MockReportRepository
+	meetups *mocks.MockModerationMeetupRepository
+	chats   *mocks.MockModerationChatRepository
+	users   *mocks.MockUserMeetupLister
+	files   *mocks.MockFileStore
+	s3      *fakeS3Deleter
+	audit   *recordingAuditSvc
+	mcache  *fakeMeetupCache
+	pcache  *fakeProfileCache
+	ccache  *fakeChatCache
+	svc     *ModerationService
 }
 
 func setupModerationTest(t *testing.T) *moderationFixture {
 	t.Helper()
 	ctrl := gomock.NewController(t)
 	f := &moderationFixture{
-		reports:  mocks.NewMockReportRepository(ctrl),
-		meetups:  mocks.NewMockModerationMeetupRepository(ctrl),
-		chats:    mocks.NewMockModerationChatRepository(ctrl),
-		profiles: mocks.NewMockModerationProfileRepository(ctrl),
-		users:    mocks.NewMockUserMeetupLister(ctrl),
-		files:    mocks.NewMockFileStore(ctrl),
-		s3:       &fakeS3Deleter{},
-		audit:    &recordingAuditSvc{},
-		mcache:   &fakeMeetupCache{},
-		pcache:   &fakeProfileCache{},
-		ccache:   &fakeChatCache{},
+		reports: mocks.NewMockReportRepository(ctrl),
+		meetups: mocks.NewMockModerationMeetupRepository(ctrl),
+		chats:   mocks.NewMockModerationChatRepository(ctrl),
+		users:   mocks.NewMockUserMeetupLister(ctrl),
+		files:   mocks.NewMockFileStore(ctrl),
+		s3:      &fakeS3Deleter{},
+		audit:   &recordingAuditSvc{},
+		mcache:  &fakeMeetupCache{},
+		pcache:  &fakeProfileCache{},
+		ccache:  &fakeChatCache{},
 	}
 	f.svc = NewModerationService(ModerationDeps{
 		Reports:      f.reports,
 		Meetups:      f.meetups,
 		Chats:        f.chats,
-		Profiles:     f.profiles,
 		UserMeetups:  f.users,
 		Files:        f.files,
 		S3:           f.s3,
@@ -252,15 +249,20 @@ func TestDeleteMessageAlreadyDeletedIsTargetGone(t *testing.T) {
 	require.Empty(t, f.audit.events)
 }
 
+// reportWithFile — открытая жалоба, у которой в снимке есть файл.
+func reportWithFile(typ domain.ReportTargetType, targetID int64, key string) *domain.Report {
+	rp := openReportOf(typ, targetID)
+	rp.SnapshotFileKey = &key
+	return rp
+}
+
 // Объект в S3 удаляется ДО транзакции: к моменту удаления строки он уже
 // обязан отсутствовать.
 func TestRemoveAvatarDeletesObjectBeforeRow(t *testing.T) {
 	f := setupModerationTest(t)
 	avatar := uuid.New()
-	expectReport(f, openReportOf(domain.ReportTargetUser, 42))
-	f.profiles.EXPECT().GetByUserID(gomock.Any(), int64(42)).
-		Return(&domain.Profile{UserID: 42, AvatarFileID: uuid.NullUUID{UUID: avatar, Valid: true}}, nil)
-	f.files.EXPECT().GetByID(gomock.Any(), avatar).
+	expectReport(f, reportWithFile(domain.ReportTargetUser, 42, "uploads/av.png"))
+	f.files.EXPECT().GetByKey(gomock.Any(), "uploads/av.png").
 		Return(&domain.File{ID: avatar, Bucket: "media", Key: "uploads/av.png"}, nil)
 	expectReportTx(f)
 	f.files.EXPECT().DeleteTx(gomock.Any(), gomock.Any(), avatar).
@@ -281,16 +283,37 @@ func TestRemoveAvatarDeletesObjectBeforeRow(t *testing.T) {
 	require.Equal(t, avatar.String(), f.audit.events[0].Details["file_id"])
 }
 
+// Снимать надо ТОТ файл, который видел жалующийся и модератор в карточке, а не
+// тот, что прикреплён сейчас: автор мог сменить аватар после жалобы. Иначе
+// уходит невинный новый файл, а оскорбительный остаётся в публичном бакете.
+// Профиль здесь не запрашивается вообще: мок без EXPECT провалит тест.
+func TestRemoveAvatarPurgesReportedFileNotCurrentOne(t *testing.T) {
+	f := setupModerationTest(t)
+	reported := uuid.New()
+	expectReport(f, reportWithFile(domain.ReportTargetUser, 42, "uploads/old.png"))
+	f.files.EXPECT().GetByKey(gomock.Any(), "uploads/old.png").
+		Return(&domain.File{ID: reported, Bucket: "media", Key: "uploads/old.png"}, nil)
+	expectReportTx(f)
+	f.files.EXPECT().DeleteTx(gomock.Any(), gomock.Any(), reported).Return(nil)
+	f.reports.EXPECT().
+		ResolveTargetTx(gomock.Any(), gomock.Any(), domain.ReportTargetUser, int64(42), int64(7), AuditActionAvatarRemove).
+		Return(1, nil)
+	f.users.EXPECT().MeetupIDsForUser(gomock.Any(), int64(42)).Return(nil, nil)
+
+	require.NoError(t, f.svc.RemoveAvatar(context.Background(), 7, 100, ""))
+
+	require.Equal(t, []string{"media/uploads/old.png"}, f.s3.deleted)
+	require.Equal(t, reported.String(), f.audit.events[0].Details["file_id"])
+}
+
 // Review Focus #4: S3 недоступен — в БД ничего не меняется, в журнале пусто,
 // модератор может повторить. Ни RunInTx, ни DeleteTx не ожидаются.
 func TestRemoveAvatarS3FailureChangesNothing(t *testing.T) {
 	f := setupModerationTest(t)
 	f.s3.err = errors.New("s3 down")
 	avatar := uuid.New()
-	expectReport(f, openReportOf(domain.ReportTargetUser, 42))
-	f.profiles.EXPECT().GetByUserID(gomock.Any(), int64(42)).
-		Return(&domain.Profile{UserID: 42, AvatarFileID: uuid.NullUUID{UUID: avatar, Valid: true}}, nil)
-	f.files.EXPECT().GetByID(gomock.Any(), avatar).
+	expectReport(f, reportWithFile(domain.ReportTargetUser, 42, "k"))
+	f.files.EXPECT().GetByKey(gomock.Any(), "k").
 		Return(&domain.File{ID: avatar, Bucket: "media", Key: "k"}, nil)
 
 	err := f.svc.RemoveAvatar(context.Background(), 7, 100, "")
@@ -301,25 +324,34 @@ func TestRemoveAvatarS3FailureChangesNothing(t *testing.T) {
 	require.Empty(t, f.pcache.invalidated)
 }
 
-func TestRemoveAvatarWithoutAvatarIsTargetGone(t *testing.T) {
+// В снимке жалобы файла не было — снимать нечего.
+func TestRemoveAvatarWithoutReportedFileIsTargetGone(t *testing.T) {
 	f := setupModerationTest(t)
 	expectReport(f, openReportOf(domain.ReportTargetUser, 42))
-	f.profiles.EXPECT().GetByUserID(gomock.Any(), int64(42)).Return(&domain.Profile{UserID: 42}, nil)
 
 	require.ErrorIs(t, f.svc.RemoveAvatar(context.Background(), 7, 100, ""), ErrTargetGone)
+}
+
+// Файл из снимка уже удалён (другим модератором, повторной попыткой).
+func TestRemoveAvatarReportedFileAlreadyDeletedIsTargetGone(t *testing.T) {
+	f := setupModerationTest(t)
+	expectReport(f, reportWithFile(domain.ReportTargetUser, 42, "uploads/gone.png"))
+	f.files.EXPECT().GetByKey(gomock.Any(), "uploads/gone.png").Return(nil, repo.ErrFileNotFound)
+
+	require.ErrorIs(t, f.svc.RemoveAvatar(context.Background(), 7, 100, ""), ErrTargetGone)
+	require.Empty(t, f.audit.events)
 }
 
 // Обложка встроена и в снапшот митапа, и в списки чатов участников.
 func TestRemoveCoverInvalidatesMeetupAndChats(t *testing.T) {
 	f := setupModerationTest(t)
 	cover := uuid.New()
-	expectReport(f, openReportOf(domain.ReportTargetMeetup, 55))
+	expectReport(f, reportWithFile(domain.ReportTargetMeetup, 55, "uploads/cover.jpg"))
 	f.meetups.EXPECT().GetByID(gomock.Any(), int64(55), int64(0)).
 		Return(&domain.Meetup{
-			ID: 55, CoverFileID: uuid.NullUUID{UUID: cover, Valid: true},
-			Participants: []*domain.User{{ID: 42}, {ID: 3}},
+			ID: 55, Participants: []*domain.User{{ID: 42}, {ID: 3}},
 		}, nil)
-	f.files.EXPECT().GetByID(gomock.Any(), cover).
+	f.files.EXPECT().GetByKey(gomock.Any(), "uploads/cover.jpg").
 		Return(&domain.File{ID: cover, Bucket: "media", Key: "uploads/cover.jpg"}, nil)
 	expectReportTx(f)
 	f.files.EXPECT().DeleteTx(gomock.Any(), gomock.Any(), cover).Return(nil)
@@ -334,11 +366,42 @@ func TestRemoveCoverInvalidatesMeetupAndChats(t *testing.T) {
 	require.Equal(t, []int64{42, 3}, f.ccache.invalidated)
 }
 
+// Так же, как с аватаром: снимается обложка из снимка жалобы, даже если автор
+// уже поставил другую.
+func TestRemoveCoverPurgesReportedFileNotCurrentOne(t *testing.T) {
+	f := setupModerationTest(t)
+	reported, current := uuid.New(), uuid.New()
+	expectReport(f, reportWithFile(domain.ReportTargetMeetup, 55, "uploads/old-cover.jpg"))
+	f.meetups.EXPECT().GetByID(gomock.Any(), int64(55), int64(0)).
+		Return(&domain.Meetup{ID: 55, CoverFileID: uuid.NullUUID{UUID: current, Valid: true}}, nil)
+	f.files.EXPECT().GetByKey(gomock.Any(), "uploads/old-cover.jpg").
+		Return(&domain.File{ID: reported, Bucket: "media", Key: "uploads/old-cover.jpg"}, nil)
+	expectReportTx(f)
+	f.files.EXPECT().DeleteTx(gomock.Any(), gomock.Any(), reported).Return(nil)
+	f.reports.EXPECT().
+		ResolveTargetTx(gomock.Any(), gomock.Any(), domain.ReportTargetMeetup, int64(55), int64(7), AuditActionCoverRemove).
+		Return(1, nil)
+
+	require.NoError(t, f.svc.RemoveCover(context.Background(), 7, 100, ""))
+
+	require.Equal(t, []string{"media/uploads/old-cover.jpg"}, f.s3.deleted)
+}
+
 // Митапа уже нет (GetByID отдаёт nil, nil) — «контента нет», не паника.
 func TestRemoveCoverMissingMeetupIsTargetGone(t *testing.T) {
 	f := setupModerationTest(t)
-	expectReport(f, openReportOf(domain.ReportTargetMeetup, 55))
+	expectReport(f, reportWithFile(domain.ReportTargetMeetup, 55, "uploads/cover.jpg"))
 	f.meetups.EXPECT().GetByID(gomock.Any(), int64(55), int64(0)).Return(nil, nil)
+
+	require.ErrorIs(t, f.svc.RemoveCover(context.Background(), 7, 100, ""), ErrTargetGone)
+}
+
+// В снимке жалобы на митап обложки не было — снимать нечего.
+func TestRemoveCoverWithoutReportedFileIsTargetGone(t *testing.T) {
+	f := setupModerationTest(t)
+	expectReport(f, openReportOf(domain.ReportTargetMeetup, 55))
+	f.meetups.EXPECT().GetByID(gomock.Any(), int64(55), int64(0)).
+		Return(&domain.Meetup{ID: 55}, nil)
 
 	require.ErrorIs(t, f.svc.RemoveCover(context.Background(), 7, 100, ""), ErrTargetGone)
 }

@@ -210,45 +210,6 @@ func (mr *MockModerationChatRepositoryMockRecorder) DeleteMessageByAdminTx(ctx, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMessageByAdminTx", reflect.TypeOf((*MockModerationChatRepository)(nil).DeleteMessageByAdminTx), ctx, tx, msgID)
 }
 
-// MockModerationProfileRepository is a mock of ModerationProfileRepository interface.
-type MockModerationProfileRepository struct {
-	ctrl     *gomock.Controller
-	recorder *MockModerationProfileRepositoryMockRecorder
-	isgomock struct{}
-}
-
-// MockModerationProfileRepositoryMockRecorder is the mock recorder for MockModerationProfileRepository.
-type MockModerationProfileRepositoryMockRecorder struct {
-	mock *MockModerationProfileRepository
-}
-
-// NewMockModerationProfileRepository creates a new mock instance.
-func NewMockModerationProfileRepository(ctrl *gomock.Controller) *MockModerationProfileRepository {
-	mock := &MockModerationProfileRepository{ctrl: ctrl}
-	mock.recorder = &MockModerationProfileRepositoryMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockModerationProfileRepository) EXPECT() *MockModerationProfileRepositoryMockRecorder {
-	return m.recorder
-}
-
-// GetByUserID mocks base method.
-func (m *MockModerationProfileRepository) GetByUserID(ctx context.Context, userID int64) (*domain.Profile, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetByUserID", ctx, userID)
-	ret0, _ := ret[0].(*domain.Profile)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetByUserID indicates an expected call of GetByUserID.
-func (mr *MockModerationProfileRepositoryMockRecorder) GetByUserID(ctx, userID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByUserID", reflect.TypeOf((*MockModerationProfileRepository)(nil).GetByUserID), ctx, userID)
-}
-
 // MockUserMeetupLister is a mock of UserMeetupLister interface.
 type MockUserMeetupLister struct {
 	ctrl     *gomock.Controller

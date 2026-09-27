@@ -21,6 +21,7 @@ type S3DeleteObjectAPI interface {
 // FileStore — то, что нужно для удаления файла. Удовлетворяется *repo.FileRepo.
 type FileStore interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.File, error)
+	GetByKey(ctx context.Context, key string) (*domain.File, error)
 	DeleteTx(ctx context.Context, tx bun.IDB, id uuid.UUID) error
 }
 

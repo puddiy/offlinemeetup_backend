@@ -116,3 +116,18 @@ func (mr *MockFileStoreMockRecorder) GetByID(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockFileStore)(nil).GetByID), ctx, id)
 }
+
+// GetByKey mocks base method.
+func (m *MockFileStore) GetByKey(ctx context.Context, key string) (*domain.File, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByKey", ctx, key)
+	ret0, _ := ret[0].(*domain.File)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByKey indicates an expected call of GetByKey.
+func (mr *MockFileStoreMockRecorder) GetByKey(ctx, key any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByKey", reflect.TypeOf((*MockFileStore)(nil).GetByKey), ctx, key)
+}

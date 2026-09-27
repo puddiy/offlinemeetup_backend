@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"strconv"
 
-	"github.com/google/uuid"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/domain"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/dto"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/repo"
@@ -41,11 +40,6 @@ type ModerationChatRepository interface {
 	DeleteMessageByAdminTx(ctx context.Context, tx bun.IDB, msgID int64) (*repo.DeletedMessage, error)
 }
 
-// ModerationProfileRepository — удовлетворяется *repo.ProfileRepo.
-type ModerationProfileRepository interface {
-	GetByUserID(ctx context.Context, userID int64) (*domain.Profile, error)
-}
-
 // UserMeetupLister — митапы, в снапшоты которых вложен профиль пользователя.
 // Нужен при снятии аватара: MeetupCache хранит Creator и Participants целиком.
 // Удовлетворяется *repo.UserAdminRepo.
@@ -60,7 +54,6 @@ type ModerationDeps struct {
 	Reports      ReportRepository
 	Meetups      ModerationMeetupRepository
 	Chats        ModerationChatRepository
-	Profiles     ModerationProfileRepository
 	UserMeetups  UserMeetupLister
 	Files        FileStore
 	S3           S3DeleteObjectAPI
@@ -276,7 +269,11 @@ func (s *ModerationService) DeleteMessage(ctx context.Context, actorID, reportID
 	}, nil
 }
 
-// RemoveAvatar удаляет аватар пользователя по жалобе.
+// RemoveAvatar удаляет аватар пользователя, на который пожаловались.
+//
+// Снимается файл ИЗ СНИМКА жалобы, а не тот, что прикреплён к профилю сейчас:
+// автор мог сменить аватар после жалобы, и тогда по текущему ушёл бы невинный
+// новый файл, а оскорбительный остался бы в публичном бакете.
 func (s *ModerationService) RemoveAvatar(ctx context.Context, actorID, reportID int64, ip string) error {
 	if actorID == 0 {
 		return ErrInvalidInput
@@ -286,15 +283,12 @@ func (s *ModerationService) RemoveAvatar(ctx context.Context, actorID, reportID 
 		return err
 	}
 
-	profile, err := s.d.Profiles.GetByUserID(ctx, rp.TargetID)
+	file, err := s.reportedFile(ctx, rp)
 	if err != nil {
-		return fmt.Errorf("load profile: %w", err)
-	}
-	if profile == nil || !profile.AvatarFileID.Valid {
-		return ErrTargetGone
+		return err
 	}
 
-	if err := s.removeFile(ctx, rp, actorID, ip, profile.AvatarFileID.UUID, AuditActionAvatarRemove, "user"); err != nil {
+	if err := s.removeFile(ctx, rp, actorID, ip, file, AuditActionAvatarRemove, "user"); err != nil {
 		return err
 	}
 
@@ -316,7 +310,8 @@ func (s *ModerationService) RemoveAvatar(ctx context.Context, actorID, reportID 
 	return nil
 }
 
-// RemoveCover удаляет обложку митапа по жалобе.
+// RemoveCover удаляет обложку митапа, на который пожаловались. Как и у
+// аватара, снимается файл из снимка жалобы (см. RemoveAvatar).
 func (s *ModerationService) RemoveCover(ctx context.Context, actorID, reportID int64, ip string) error {
 	if actorID == 0 {
 		return ErrInvalidInput
@@ -326,15 +321,21 @@ func (s *ModerationService) RemoveCover(ctx context.Context, actorID, reportID i
 		return err
 	}
 
+	// Митап нужен для сброса кэша: участники берутся из него.
 	m, err := s.d.Meetups.GetByID(ctx, rp.TargetID, 0)
 	if err != nil {
 		return fmt.Errorf("load meetup: %w", err)
 	}
-	if m == nil || !m.CoverFileID.Valid {
+	if m == nil {
 		return ErrTargetGone
 	}
 
-	if err := s.removeFile(ctx, rp, actorID, ip, m.CoverFileID.UUID, AuditActionCoverRemove, "meetup"); err != nil {
+	file, err := s.reportedFile(ctx, rp)
+	if err != nil {
+		return err
+	}
+
+	if err := s.removeFile(ctx, rp, actorID, ip, file, AuditActionCoverRemove, "meetup"); err != nil {
 		return err
 	}
 
@@ -343,6 +344,20 @@ func (s *ModerationService) RemoveCover(ctx context.Context, actorID, reportID i
 	s.invalidateMeetup(ctx, rp.TargetID)
 	s.invalidateChats(ctx, memberIDs(m))
 	return nil
+}
+
+// reportedFile находит файл, который жалующийся видел в момент жалобы, по
+// ключу из снимка. Нет ключа (в момент жалобы файла не было) или файла уже нет
+// — ErrTargetGone: снимать нечего.
+func (s *ModerationService) reportedFile(ctx context.Context, rp *domain.Report) (*domain.File, error) {
+	if rp.SnapshotFileKey == nil {
+		return nil, ErrTargetGone
+	}
+	f, err := s.d.Files.GetByKey(ctx, *rp.SnapshotFileKey)
+	if err != nil {
+		return nil, mapModerationError(err, "load reported file")
+	}
+	return f, nil
 }
 
 // openReport загружает жалобу и проверяет, что по ней можно действовать:
@@ -399,22 +414,17 @@ func (s *ModerationService) resolveAndAudit(ctx context.Context, tx bun.IDB, rp 
 // ключа S3 считает успехом). Обратный порядок при сбое S3 оставил бы
 // оскорбительный файл доступным по публичной ссылке без записи о нём.
 // Ссылка из профиля/митапа отвязывается сама: FK на files — ON DELETE SET NULL.
-func (s *ModerationService) removeFile(ctx context.Context, rp *domain.Report, actorID int64, ip string, fileID uuid.UUID, action, targetType string) error {
-	f, err := s.d.Files.GetByID(ctx, fileID)
-	if err != nil {
-		return mapModerationError(err, "load file")
-	}
-
+func (s *ModerationService) removeFile(ctx context.Context, rp *domain.Report, actorID int64, ip string, f *domain.File, action, targetType string) error {
 	if err := deleteStoredObject(ctx, s.d.S3, f); err != nil {
 		return err
 	}
 
-	err = s.d.Reports.RunInTx(ctx, func(tx bun.Tx) error {
-		if err := s.d.Files.DeleteTx(ctx, tx, fileID); err != nil {
+	err := s.d.Reports.RunInTx(ctx, func(tx bun.Tx) error {
+		if err := s.d.Files.DeleteTx(ctx, tx, f.ID); err != nil {
 			return err
 		}
 		return s.resolveAndAudit(ctx, tx, rp, actorID, action, targetType, ip,
-			map[string]any{"file_id": fileID.String(), "file_key": f.Key})
+			map[string]any{"file_id": f.ID.String(), "file_key": f.Key})
 	})
 	return mapModerationError(err, action)
 }

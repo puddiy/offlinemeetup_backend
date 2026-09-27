@@ -136,7 +136,6 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 		Reports:      reportRepo,
 		Meetups:      meetupRepo,
 		Chats:        chatRepo,
-		Profiles:     profileRepo,
 		UserMeetups:  userAdminRepo,
 		Files:        fileRepo,
 		S3:           s3Client,

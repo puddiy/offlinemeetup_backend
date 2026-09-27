@@ -51,6 +51,21 @@ func (r *FileRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.File, err
 	return f, nil
 }
 
+// GetByKey находит файл по ключу объекта. Нужен модерации: жалоба хранит
+// ключ файла на момент подачи, и снимать надо именно его, а не тот, что
+// прикреплён сейчас.
+func (r *FileRepo) GetByKey(ctx context.Context, key string) (*domain.File, error) {
+	f := new(domain.File)
+	err := r.db.NewSelect().Model(f).Where("key = ?", key).Scan(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrFileNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get file by key: %w", err)
+	}
+	return f, nil
+}
+
 // DeleteTx удаляет строку файла. Все ссылки на files объявлены
 // ON DELETE SET NULL (profile.avatar_file_id, meetups.cover_file_id,
 // messages.file_id), поэтому удаление строки само отвязывает файл отовсюду.

@@ -101,6 +101,14 @@ type Config struct {
 	// украденная cookie не протухала бы никогда.
 	AdminSessionTTL    time.Duration
 	AdminSessionMaxTTL time.Duration
+
+	// FileGCInterval — как часто искать и удалять осиротевшие файлы
+	// (FILE_GC_INTERVAL, дефолт 1h). FileGCMinAge — сколько файл обязан
+	// пролежать без ссылок, прежде чем его удалят (FILE_GC_MIN_AGE, дефолт
+	// 24h): клиент сначала загружает файл и лишь потом отправляет сообщение
+	// или сохраняет профиль, и эта пауза не должна стоить ему вложения.
+	FileGCInterval time.Duration
+	FileGCMinAge   time.Duration
 }
 
 // durEnv reads a duration from env (e.g. "200ms", "5m"); on an empty or
@@ -194,6 +202,8 @@ func Load() (*Config, error) {
 	cfg.LoginFailWindow = durEnv("LOGIN_FAIL_WINDOW", 15*time.Minute)
 	cfg.AdminSessionTTL = durEnv("ADMIN_SESSION_TTL", 8*time.Hour)
 	cfg.AdminSessionMaxTTL = durEnv("ADMIN_SESSION_MAX_TTL", 24*time.Hour)
+	cfg.FileGCInterval = durEnv("FILE_GC_INTERVAL", time.Hour)
+	cfg.FileGCMinAge = durEnv("FILE_GC_MIN_AGE", 24*time.Hour)
 
 	if origins := os.Getenv("WS_ALLOWED_ORIGINS"); origins != "" {
 		for o := range strings.SplitSeq(origins, ",") {

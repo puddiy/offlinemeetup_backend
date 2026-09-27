@@ -195,3 +195,29 @@ func TestLoadAdminSessionOverride(t *testing.T) {
 	require.Equal(t, 30*time.Minute, cfg.AdminSessionTTL)
 	require.Equal(t, 4*time.Hour, cfg.AdminSessionMaxTTL)
 }
+
+func TestLoadFileGCDefaults(t *testing.T) {
+	t.Setenv("DB_DSN", "postgres://u:p@localhost:5432/db?sslmode=disable")
+	t.Setenv("TELEGRAM_BOT_TOKEN", "test-token")
+	t.Setenv("JWT_SECRET_KEY", "test-secret")
+	t.Setenv("APP_ENV", "local")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, time.Hour, cfg.FileGCInterval)
+	require.Equal(t, 24*time.Hour, cfg.FileGCMinAge)
+}
+
+func TestLoadFileGCOverride(t *testing.T) {
+	t.Setenv("DB_DSN", "postgres://u:p@localhost:5432/db?sslmode=disable")
+	t.Setenv("TELEGRAM_BOT_TOKEN", "test-token")
+	t.Setenv("JWT_SECRET_KEY", "test-secret")
+	t.Setenv("APP_ENV", "local")
+	t.Setenv("FILE_GC_INTERVAL", "10s")
+	t.Setenv("FILE_GC_MIN_AGE", "1m")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 10*time.Second, cfg.FileGCInterval)
+	require.Equal(t, time.Minute, cfg.FileGCMinAge)
+}

@@ -18,6 +18,7 @@ import (
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/cache/cachemetrics"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/config"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/repo"
+	"github.com/puddingtonnn/offlinemeetup_backend/internal/safego"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/service"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/service/mail"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/service/mail/mailmetrics"
@@ -36,6 +37,7 @@ type App struct {
 	DB     *bun.DB
 	hub    *websocket.Hub
 	rdb    *redis.Client
+	fileGC *service.FileGC
 }
 
 func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
@@ -127,6 +129,7 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 	presenceStore := cache.NewRedisPresenceStore(rdb)
 	presenceService := service.NewPresenceService(presenceStore, chatService, profileRepo, cfg.PresenceTTL)
 	fileService := service.NewFileService(fileRepo, s3Client, cfg)
+	fileGC := service.NewFileGC(fileRepo, s3Client, cfg.FileGCMinAge, fileGCBatch, log)
 	adminAuthService := service.NewAdminAuthService(adminRepo, adminSessions, cfg, log)
 	auditService := service.NewAuditService(auditRepo, log)
 	adminUserService := service.NewAdminUserService(userAdminRepo, refreshRepo, auditService,
@@ -176,11 +179,21 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 		DB:     db,
 		hub:    hub,
 		rdb:    rdb,
+		fileGC: fileGC,
 	}
 }
 
+// fileGCBatch — сколько осиротевших файлов удаляется за один проход уборки.
+// Проход раз в FILE_GC_INTERVAL; при дефолтном часе это до 4800 файлов в
+// сутки — с запасом больше, чем их появляется.
+const fileGCBatch = 200
+
 func (a *App) Run(ctx context.Context) error {
 	go a.hub.Run(ctx)
+
+	// Уборка осиротевших файлов останавливается вместе с ctx. Каждый её
+	// проход сам ловит панику (FileGC.Run), safego здесь — второй рубеж.
+	safego.Go(a.log, func() { a.fileGC.Run(ctx, a.cfg.FileGCInterval) })
 
 	// Subscribe this instance to the WS broadcast channel before serving so no
 	// early broadcast is missed. Local delivery happens ONLY through this

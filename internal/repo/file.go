@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/domain"
@@ -64,6 +65,38 @@ func (r *FileRepo) GetByKey(ctx context.Context, key string) (*domain.File, erro
 		return nil, fmt.Errorf("get file by key: %w", err)
 	}
 	return f, nil
+}
+
+// ListOrphans отдаёт файлы, на которые ничто живое не ссылается и которые
+// старше minAge: кандидаты на удаление для service.FileGC.
+//
+// Сирота — это файл, на который НЕ ссылается:
+//   - профиль (avatar_file_id);
+//   - митап (cover_file_id) — в том числе отменённый: он виден в истории;
+//   - НЕУДАЛЁННОЕ сообщение (file_id). Вложение удалённого сообщения API уже
+//     не отдаёт, но по публичной ссылке файл жил бы вечно — поэтому оно сирота;
+//   - снимок ОТКРЫТОЙ жалобы (snapshot_file_key) — это доказательство, пока
+//     модератор не разобрал жалобу.
+//
+// Возраст считается по часам БД (now()), а не по часам процесса: created_at
+// проставляет сама БД, и сравнение в одной системе отсчёта не зависит от
+// часового пояса и расхождения часов.
+func (r *FileRepo) ListOrphans(ctx context.Context, minAge time.Duration, limit int) ([]domain.File, error) {
+	var files []domain.File
+	err := r.db.NewSelect().
+		Model(&files).
+		Where("?TableAlias.created_at < now() - make_interval(secs => ?)", minAge.Seconds()).
+		Where("NOT EXISTS (SELECT 1 FROM profile p WHERE p.avatar_file_id = ?TableAlias.id)").
+		Where("NOT EXISTS (SELECT 1 FROM meetups m WHERE m.cover_file_id = ?TableAlias.id)").
+		Where("NOT EXISTS (SELECT 1 FROM messages ms WHERE ms.file_id = ?TableAlias.id AND ms.deleted_at IS NULL)").
+		Where("NOT EXISTS (SELECT 1 FROM reports rp WHERE rp.status = 'open' AND rp.snapshot_file_key = ?TableAlias.key)").
+		OrderExpr("?TableAlias.created_at").
+		Limit(limit).
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list orphan files: %w", err)
+	}
+	return files, nil
 }
 
 // DeleteTx удаляет строку файла. Все ссылки на files объявлены

@@ -159,6 +159,8 @@ WS_ALLOWED_ORIGINS=http://localhost:3000
 # Admin panel
 ADMIN_SESSION_TTL=8h              # session idle window (extended on each request)
 ADMIN_SESSION_MAX_TTL=24h         # absolute cap from login time
+FILE_GC_INTERVAL=1h               # how often orphaned uploads are removed
+FILE_GC_MIN_AGE=24h               # an unreferenced upload must be this old before removal
 ```
 
 ### Running with Docker (recommended)

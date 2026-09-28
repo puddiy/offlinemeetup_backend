@@ -184,6 +184,7 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 		Moderation: moderationService,
 		Meetups:    adminMeetupService,
 		Tags:       adminTagService,
+		Geo:        geoService,
 		Audit:      auditService,
 		Render:     adminRenderer,
 		WS:         hub,

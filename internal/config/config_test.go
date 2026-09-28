@@ -221,3 +221,34 @@ func TestLoadFileGCOverride(t *testing.T) {
 	require.Equal(t, 10*time.Second, cfg.FileGCInterval)
 	require.Equal(t, time.Minute, cfg.FileGCMinAge)
 }
+
+func TestLoadAdminTimezone(t *testing.T) {
+	t.Run("default", func(t *testing.T) {
+		setRequiredSecrets(t)
+		t.Setenv("DB_DSN", "postgres://localhost/test")
+		t.Setenv("ADMIN_TIMEZONE", "")
+
+		cfg, err := Load()
+		require.NoError(t, err)
+		require.Equal(t, "Europe/Moscow", cfg.AdminTimezone.String())
+	})
+	t.Run("override", func(t *testing.T) {
+		setRequiredSecrets(t)
+		t.Setenv("DB_DSN", "postgres://localhost/test")
+		t.Setenv("ADMIN_TIMEZONE", "Asia/Yekaterinburg")
+
+		cfg, err := Load()
+		require.NoError(t, err)
+		require.Equal(t, "Asia/Yekaterinburg", cfg.AdminTimezone.String())
+	})
+	// Опечатка в поясе обязана ронять старт, а не сдвигать все времена
+	// в админке на несколько часов молча.
+	t.Run("invalid fails fast", func(t *testing.T) {
+		setRequiredSecrets(t)
+		t.Setenv("DB_DSN", "postgres://localhost/test")
+		t.Setenv("ADMIN_TIMEZONE", "Europe/Moskva")
+
+		_, err := Load()
+		require.Error(t, err)
+	})
+}

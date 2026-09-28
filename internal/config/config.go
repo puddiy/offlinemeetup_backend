@@ -9,6 +9,10 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+
+	// База часовых поясов встраивается в бинарник: в минимальном Docker-
+	// образе /usr/share/zoneinfo может не быть, и LoadLocation упал бы на проде.
+	_ "time/tzdata"
 )
 
 type Config struct {
@@ -109,6 +113,12 @@ type Config struct {
 	// или сохраняет профиль, и эта пауза не должна стоить ему вложения.
 	FileGCInterval time.Duration
 	FileGCMinAge   time.Duration
+
+	// AdminTimezone — пояс, в котором админка показывает и принимает время
+	// митапов (ADMIN_TIMEZONE, дефолт Europe/Moscow). В <input
+	// type="datetime-local"> пояса нет: без явного пояса «19:00» из формы
+	// сохранилось бы как 19:00 UTC — на три часа позже для Москвы.
+	AdminTimezone *time.Location
 }
 
 // durEnv reads a duration from env (e.g. "200ms", "5m"); on an empty or
@@ -266,6 +276,16 @@ func Load() (*Config, error) {
 	if cfg.DaDataToken == "" {
 		fmt.Println("WARNING: DADATA_TOKEN is empty")
 	}
+
+	tz := os.Getenv("ADMIN_TIMEZONE")
+	if tz == "" {
+		tz = "Europe/Moscow"
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		return nil, fmt.Errorf("ADMIN_TIMEZONE %q: %w", tz, err)
+	}
+	cfg.AdminTimezone = loc
 
 	return cfg, nil
 }

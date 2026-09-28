@@ -23,8 +23,12 @@ const meetupsPath = "/admin/meetups"
 var meetupStatusFilters = map[string]bool{"active": true, "past": true, "cancelled": true}
 
 // adminLocation — пояс, в котором админка показывает и принимает время
-// митапов. Task 9 подставляет cfg.AdminTimezone; до тех пор — UTC.
+// митапов (cfg.AdminTimezone). UTC — только если конфиг собран без Load
+// (тесты транспорта).
 func (h *Handler) adminLocation() *time.Location {
+	if h.cfg != nil && h.cfg.AdminTimezone != nil {
+		return h.cfg.AdminTimezone
+	}
 	return time.UTC
 }
 

@@ -1,0 +1,53 @@
+{{define "meetup_form"}}{{template "layout" .}}{{end}}
+{{define "content"}}
+{{$d := .Data}}
+<div class="card">
+    <a href="/admin/meetups" style="color:var(--muted);font-size:13px">← к списку</a>
+    <h2 style="margin:10px 0 6px">{{if $d.MeetupID}}Редактирование митапа{{else}}Новый официальный митап{{end}}</h2>
+    <p style="color:var(--muted);margin-top:0">
+        Митап публикуется от служебного аккаунта «Meetuper». Время указывается в поясе {{$d.Timezone}}.
+    </p>
+
+    {{if $d.Errors}}
+    <div class="error">{{range $k, $v := $d.Errors}}<div>{{$k}}: {{$v}}</div>{{end}}</div>
+    {{end}}
+
+    <form method="post" action="{{$d.Action}}">
+        <label><span>Название</span>
+            <input type="text" name="title" value="{{$d.Values.Title}}" required minlength="3" maxlength="200"></label>
+        <label><span>Описание</span>
+            <textarea name="description" rows="6" maxlength="5000"
+                      style="width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">{{$d.Values.Description}}</textarea></label>
+        <div style="display:flex;gap:10px">
+            <label style="flex:1"><span>Начало</span>
+                <input type="datetime-local" name="start_time" value="{{$d.Values.Start}}" required></label>
+            <label style="flex:1"><span>Окончание</span>
+                <input type="datetime-local" name="end_time" value="{{$d.Values.End}}" required></label>
+        </div>
+
+        <div id="address-fields">{{template "address_fields" $d.Values}}</div>
+        <button type="button" hx-get="/admin/geo/suggest" hx-include="[name='address']"
+                hx-target="#address-suggestions" style="background:var(--muted)">Найти адрес</button>
+        <div id="address-suggestions" style="margin:8px 0 14px"></div>
+
+        <label style="display:flex;gap:6px;align-items:center">
+            <input type="checkbox" name="is_public" value="1"{{if $d.Values.IsPublic}} checked{{end}} style="width:auto">
+            <span style="margin:0">Публичный (виден в ленте)</span>
+        </label>
+
+        <fieldset style="border:1px solid var(--line);border-radius:6px;margin:12px 0;padding:10px">
+            <legend style="color:var(--muted);font-size:13px">Теги</legend>
+            {{range $d.Tags}}
+            <label style="display:inline-flex;gap:4px;align-items:center;margin:0 14px 6px 0">
+                <input type="checkbox" name="tags" value="{{.ID}}"{{if .Checked}} checked{{end}} style="width:auto">
+                <span style="margin:0">{{.Name}}{{if .Hidden}} (скрыт){{end}}</span>
+            </label>
+            {{else}}
+            <span style="color:var(--muted)">Теги не загрузились</span>
+            {{end}}
+        </fieldset>
+
+        <button type="submit">{{if $d.MeetupID}}Сохранить{{else}}Опубликовать{{end}}</button>
+    </form>
+</div>
+{{end}}

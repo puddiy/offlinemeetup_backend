@@ -20,7 +20,7 @@ var staticFS embed.FS
 // pages — страницы админки. Каждая парсится в ОТДЕЛЬНЫЙ template.Template
 // вместе с layout: страницы переопределяют один и тот же блок "content", и
 // в общем наборе последняя разобранная затёрла бы все предыдущие.
-var pages = []string{"login", "dashboard", "users", "user_detail", "reports", "report_detail", "tags", "meetups", "meetup_detail"}
+var pages = []string{"login", "dashboard", "users", "user_detail", "reports", "report_detail", "tags", "meetups", "meetup_detail", "meetup_form"}
 
 // partialFiles — фрагменты, которые рендерятся БЕЗ layout. Нужны для
 // HTMX-ответов: обновить таблицу на месте, не перерисовывая страницу.
@@ -28,6 +28,8 @@ var pages = []string{"login", "dashboard", "users", "user_detail", "reports", "r
 // могла включить фрагмент через {{template "..."}}.
 var partialFiles = []string{
 	"templates/_users_table.gohtml",
+	"templates/_address_fields.gohtml",
+	"templates/_address_suggestions.gohtml",
 }
 
 // PageData — общая форма данных для любой страницы. Admin пустой на странице

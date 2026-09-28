@@ -131,6 +131,7 @@ ADMIN_SESSION_TTL=8h              # окно простоя сессии (про
 ADMIN_SESSION_MAX_TTL=24h         # абсолютный потолок от момента входа
 FILE_GC_INTERVAL=1h               # как часто удалять осиротевшие файлы
 FILE_GC_MIN_AGE=24h               # сколько файл без ссылок лежит до удаления
+ADMIN_TIMEZONE=Europe/Moscow
 ```
 
 ### Запуск в Docker (рекомендуемый)

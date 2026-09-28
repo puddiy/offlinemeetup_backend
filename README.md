@@ -161,6 +161,7 @@ ADMIN_SESSION_TTL=8h              # session idle window (extended on each reques
 ADMIN_SESSION_MAX_TTL=24h         # absolute cap from login time
 FILE_GC_INTERVAL=1h               # how often orphaned uploads are removed
 FILE_GC_MIN_AGE=24h               # an unreferenced upload must be this old before removal
+ADMIN_TIMEZONE=Europe/Moscow
 ```
 
 ### Running with Docker (recommended)

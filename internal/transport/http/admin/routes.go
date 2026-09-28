@@ -104,6 +104,16 @@ func Routes(h *Handler, rdb *redis.Client, log *slog.Logger, cfg *config.Config)
 			r.Post("/tags/{id}/rename", h.TagRename)
 			r.Post("/tags/{id}/hide", h.TagHide)
 			r.Post("/tags/{id}/unhide", h.TagUnhide)
+
+			r.Get("/meetups/new", h.MeetupNew)
+			r.Post("/meetups", h.MeetupCreate)
+			r.Get("/meetups/{id}/edit", h.MeetupEdit)
+			r.Post("/meetups/{id}/edit", h.MeetupUpdate)
+
+			// Подсказки адреса ходят в платный DaData — только для тех, кто
+			// публикует митапы.
+			r.Get("/geo/suggest", h.GeoSuggest)
+			r.Get("/geo/pick", h.GeoPick)
 		})
 	})
 

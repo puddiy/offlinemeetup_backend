@@ -24,6 +24,11 @@ const (
 	noticeAvatarRemoved   notice = "avatar_removed"
 	noticeCoverRemoved    notice = "cover_removed"
 
+	noticeTagCreated  notice = "tag_created"
+	noticeTagRenamed  notice = "tag_renamed"
+	noticeTagHidden   notice = "tag_hidden"
+	noticeTagUnhidden notice = "tag_unhidden"
+
 	noticeStatusFailed   notice = "status_failed"
 	noticeRevokeFailed   notice = "revoke_failed"
 	noticeAlreadyDeleted notice = "already_deleted"
@@ -34,6 +39,11 @@ const (
 	noticeTargetGone       notice = "target_gone"
 	noticeWrongAction      notice = "wrong_action"
 	noticeModerationFailed notice = "moderation_failed"
+
+	noticeTagNameInvalid notice = "tag_name_invalid"
+	noticeTagNameTaken   notice = "tag_name_taken"
+	noticeTagNotFound    notice = "tag_not_found"
+	noticeTagFailed      notice = "tag_failed"
 )
 
 // Два каталога, а не один: ключ успеха в ?err= (или ошибки в ?flash=) не
@@ -50,6 +60,10 @@ var (
 		noticeMessageDeleted:  "Сообщение удалено у всех участников чата",
 		noticeAvatarRemoved:   "Аватар удалён",
 		noticeCoverRemoved:    "Обложка удалена",
+		noticeTagCreated:      "Тег добавлен",
+		noticeTagRenamed:      "Тег переименован",
+		noticeTagHidden:       "Тег скрыт: он пропал из выбора, но остался на митапах и в профилях",
+		noticeTagUnhidden:     "Тег снова доступен в каталоге",
 	}
 	errorTexts = map[notice]string{
 		noticeStatusFailed:   "Не удалось изменить статус",
@@ -62,5 +76,9 @@ var (
 		noticeTargetGone:       "Контента уже нет: его удалил автор или другой модератор. Отклоните жалобу",
 		noticeWrongAction:      "Это действие не подходит для жалобы такого типа",
 		noticeModerationFailed: "Не удалось выполнить действие",
+		noticeTagNameInvalid:   "Название тега — от 2 до 40 символов",
+		noticeTagNameTaken:     "Такой тег уже есть (регистр не учитывается)",
+		noticeTagNotFound:      "Тег не найден",
+		noticeTagFailed:        "Не удалось изменить тег",
 	}
 )

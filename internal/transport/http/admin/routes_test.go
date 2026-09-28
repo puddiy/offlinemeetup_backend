@@ -28,7 +28,7 @@ func newTestRoutes(t *testing.T) http.Handler {
 	rend, err := NewRenderer(log)
 	require.NoError(t, err)
 	cfg := &config.Config{Env: "local"}
-	h := NewHandler(&stubAuth{loginErr: service.ErrUnauthorized}, nil, nil, &recordingAudit{}, rend, nil, cfg, log)
+	h := NewHandler(Deps{Auth: &stubAuth{loginErr: service.ErrUnauthorized}, Audit: &recordingAudit{}, Render: rend, Cfg: cfg, Log: log})
 
 	// Глобальные заголовки — как в router.go: без них тест не увидел бы,
 	// что поддерево /admin обязано перетереть Referrer-Policy.
@@ -111,7 +111,7 @@ func newRoutesWith(t *testing.T, role domain.AdminRole, users AdminUserSvc, mode
 	cfg := &config.Config{Env: "local"}
 
 	auth := &stubAuth{admin: &domain.AdminUser{ID: 7, Email: "root@x.io", Role: role, IsActive: true}}
-	h := NewHandler(auth, users, moderation, &recordingAudit{}, rend, nil, cfg, log)
+	h := NewHandler(Deps{Auth: auth, Users: users, Moderation: moderation, Audit: &recordingAudit{}, Render: rend, Cfg: cfg, Log: log})
 
 	// Глобальные заголовки — как в router.go: без них тест не увидел бы,
 	// что поддерево /admin обязано перетереть Referrer-Policy.
@@ -188,4 +188,19 @@ func TestRoutesRejectNullOrigin(t *testing.T) {
 
 	rec := serve(root, loginPost("null"))
 	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+// Справочник тегов — контент-менеджмент, это работа роли admin
+// (domain.AdminRoleAdmin). Модератору и чтение, и запись закрыты маршрутом.
+func TestRoutesTagsForbiddenForModerator(t *testing.T) {
+	root := newRoutesAs(t, domain.AdminRoleModerator, &stubUserSvc{})
+
+	get := httptest.NewRequest(http.MethodGet, "http://example.com/admin/tags", nil)
+	get.AddCookie(&http.Cookie{Name: middleware.AdminSessionCookieName, Value: "live-session"})
+	require.Equal(t, http.StatusForbidden, serve(root, get).Code)
+
+	post := httptest.NewRequest(http.MethodPost, "http://example.com/admin/tags/1/hide", nil)
+	post.Header.Set("Origin", "http://example.com")
+	post.AddCookie(&http.Cookie{Name: middleware.AdminSessionCookieName, Value: "live-session"})
+	require.Equal(t, http.StatusForbidden, serve(root, post).Code)
 }

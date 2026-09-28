@@ -86,6 +86,19 @@ func Routes(h *Handler, rdb *redis.Client, log *slog.Logger, cfg *config.Config)
 		r.Post("/reports/{id}/delete-message", h.ReportDeleteMessage)
 		r.Post("/reports/{id}/remove-avatar", h.ReportRemoveAvatar)
 		r.Post("/reports/{id}/remove-cover", h.ReportRemoveCover)
+
+		// Контент-менеджмент — работа роли admin (domain.AdminRoleAdmin):
+		// справочник тегов, публикация и правка официальных митапов.
+		// Модератору закрыты и чтение, и запись: это не модерация.
+		r.Group(func(r chi.Router) {
+			r.Use(mw.RequireAdminRole(domain.AdminRoleAdmin))
+
+			r.Get("/tags", h.TagsList)
+			r.Post("/tags", h.TagCreate)
+			r.Post("/tags/{id}/rename", h.TagRename)
+			r.Post("/tags/{id}/hide", h.TagHide)
+			r.Post("/tags/{id}/unhide", h.TagUnhide)
+		})
 	})
 
 	return r

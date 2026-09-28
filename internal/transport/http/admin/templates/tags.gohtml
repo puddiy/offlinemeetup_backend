@@ -1,0 +1,51 @@
+{{define "tags"}}{{template "layout" .}}{{end}}
+{{define "content"}}
+<div class="card">
+    <h2 style="margin-top:0">Теги</h2>
+    <p style="color:var(--muted)">
+        Скрытый тег пропадает из каталога и из выбора в приложении, но остаётся на митапах
+        и в профилях, где уже стоит. Скрытие обратимо; удаления нет намеренно.
+    </p>
+
+    <form method="post" action="/admin/tags" style="display:flex;gap:10px;margin-bottom:18px">
+        <input type="text" name="name" placeholder="Новый тег" required minlength="2" maxlength="40">
+        <button type="submit">Добавить</button>
+    </form>
+
+    <table>
+        <thead>
+        <tr><th>ID</th><th>Название</th><th>Митапов</th><th>Профилей</th><th></th></tr>
+        </thead>
+        <tbody>
+        {{range .Data.Tags}}
+        <tr{{if .IsHidden}} style="color:var(--muted)"{{end}}>
+            <td>{{.ID}}</td>
+            <td>
+                <form method="post" action="/admin/tags/{{.ID}}/rename" style="display:flex;gap:6px;align-items:center">
+                    <input type="text" name="name" value="{{.Name}}" required minlength="2" maxlength="40">
+                    <button type="submit" style="background:var(--muted)">Переименовать</button>
+                    {{if .IsHidden}}<span style="font-size:12px">скрыт</span>{{end}}
+                </form>
+            </td>
+            <td>{{.Meetups}}</td>
+            <td>{{.Users}}</td>
+            <td>
+                {{if .IsHidden}}
+                <form method="post" action="/admin/tags/{{.ID}}/unhide">
+                    <button type="submit">Показать</button>
+                </form>
+                {{else}}
+                <form method="post" action="/admin/tags/{{.ID}}/hide"
+                      onsubmit="return confirm('Скрыть тег? Он пропадёт из выбора в приложении, но останется на митапах и в профилях.')">
+                    <button type="submit" style="background:var(--danger)">Скрыть</button>
+                </form>
+                {{end}}
+            </td>
+        </tr>
+        {{else}}
+        <tr><td colspan="5" style="color:var(--muted)">Тегов нет</td></tr>
+        {{end}}
+        </tbody>
+    </table>
+</div>
+{{end}}

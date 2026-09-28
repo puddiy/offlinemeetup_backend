@@ -88,7 +88,7 @@ func newReportsHandler(t *testing.T, mod *stubModeration, ws Broadcaster) *Handl
 	t.Helper()
 	r, err := NewRenderer(slog.New(slog.DiscardHandler))
 	require.NoError(t, err)
-	return NewHandler(&stubAuth{}, nil, mod, &recordingAudit{}, r, ws, &config.Config{Env: "local"}, slog.New(slog.DiscardHandler))
+	return NewHandler(Deps{Auth: &stubAuth{}, Moderation: mod, Audit: &recordingAudit{}, Render: r, WS: ws, Cfg: &config.Config{Env: "local"}, Log: slog.New(slog.DiscardHandler)})
 }
 
 func reportDetail(typ, status string) *dto.AdminReportDetail {

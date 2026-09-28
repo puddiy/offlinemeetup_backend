@@ -49,7 +49,7 @@ func newTestHandler(t *testing.T, auth *stubAuth, audit *recordingAudit) *Handle
 	r, err := NewRenderer(slog.New(slog.DiscardHandler))
 	require.NoError(t, err)
 	cfg := &config.Config{Env: "local"}
-	return NewHandler(auth, nil, nil, audit, r, nil, cfg, slog.New(slog.DiscardHandler))
+	return NewHandler(Deps{Auth: auth, Audit: audit, Render: r, Cfg: cfg, Log: slog.New(slog.DiscardHandler)})
 }
 
 func postForm(target string, values url.Values) *http.Request {

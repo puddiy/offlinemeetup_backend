@@ -42,6 +42,7 @@
         <a href="/admin/">Дашборд</a>
         <a href="/admin/users">Пользователи</a>
         <a href="/admin/reports">Жалобы</a>
+        {{if eq (printf "%s" .Admin.Role) "admin"}}<a href="/admin/tags">Теги</a>{{end}}
     </nav>
     <div class="who">
         {{.Admin.Email}} · {{.Admin.Role}}

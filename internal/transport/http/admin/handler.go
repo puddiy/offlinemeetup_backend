@@ -9,6 +9,7 @@ import (
 
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/config"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/domain"
+	"github.com/puddingtonnn/offlinemeetup_backend/internal/dto"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/service"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/transport/http/middleware"
 )
@@ -20,10 +21,52 @@ type AdminAuthService interface {
 	Logout(ctx context.Context, token string) error
 }
 
+// AdminTagSvc — справочник тегов (*service.AdminTagService).
+type AdminTagSvc interface {
+	List(ctx context.Context) ([]dto.AdminTagRow, error)
+	Create(ctx context.Context, actorID int64, name, ip string) error
+	Rename(ctx context.Context, actorID, tagID int64, name, ip string) error
+	SetHidden(ctx context.Context, actorID, tagID int64, hidden bool, ip string) error
+}
+
+// AdminMeetupSvc — митапы в админке (*service.AdminMeetupService).
+type AdminMeetupSvc interface {
+	List(ctx context.Context, f service.AdminMeetupFilter) (dto.Page[dto.AdminMeetupRow], error)
+	Get(ctx context.Context, id int64) (*dto.AdminMeetupDetail, error)
+	CreateOfficial(ctx context.Context, actorID int64, req dto.CreateMeetupRequest, ip string) (int64, error)
+	UpdateOfficial(ctx context.Context, actorID, meetupID int64, req dto.UpdateMeetupRequest, ip string) error
+}
+
+// AddressSuggester — подсказки адреса (*service.GeoService, DaData).
+type AddressSuggester interface {
+	SuggestAddress(ctx context.Context, query string) ([]dto.AddressSuggestion, error)
+}
+
+// Deps — зависимости транспорта админки. Структура, а не позиционные
+// аргументы: их больше десятка, и два интерфейса одной формы легко
+// перепутать местами (тот же довод, что у service.ModerationDeps).
+// Незаданное поле — nil: тесты передают только то, что проверяют.
+type Deps struct {
+	Auth       AdminAuthService
+	Users      AdminUserSvc
+	Moderation ModerationSvc
+	Meetups    AdminMeetupSvc
+	Tags       AdminTagSvc
+	Geo        AddressSuggester
+	Audit      service.AuditRecorder
+	Render     *Renderer
+	WS         Broadcaster
+	Cfg        *config.Config
+	Log        *slog.Logger
+}
+
 type Handler struct {
 	auth       AdminAuthService
 	users      AdminUserSvc
 	moderation ModerationSvc
+	meetups    AdminMeetupSvc
+	tags       AdminTagSvc
+	geo        AddressSuggester
 	audit      service.AuditRecorder
 	render     *Renderer
 	ws         Broadcaster
@@ -31,8 +74,20 @@ type Handler struct {
 	log        *slog.Logger
 }
 
-func NewHandler(auth AdminAuthService, users AdminUserSvc, moderation ModerationSvc, audit service.AuditRecorder, r *Renderer, ws Broadcaster, cfg *config.Config, log *slog.Logger) *Handler {
-	return &Handler{auth: auth, users: users, moderation: moderation, audit: audit, render: r, ws: ws, cfg: cfg, log: log}
+func NewHandler(d Deps) *Handler {
+	return &Handler{
+		auth:       d.Auth,
+		users:      d.Users,
+		moderation: d.Moderation,
+		meetups:    d.Meetups,
+		tags:       d.Tags,
+		geo:        d.Geo,
+		audit:      d.Audit,
+		render:     d.Render,
+		ws:         d.WS,
+		cfg:        d.Cfg,
+		log:        d.Log,
+	}
 }
 
 // secureCookies — ставить ли флаг Secure. В local его нельзя ставить

@@ -390,6 +390,19 @@ func TestMeetupService_UpdateMeetup(t *testing.T) {
 
 	// Review Focus #1: PATCH без поля tags стирал все теги митапа — сервис
 	// передавал nil, а репозиторий безусловно чистил meetup_tags.
+	t.Run("cancelled meetup cannot be edited", func(t *testing.T) {
+		mr, _, mockRepo, svc := setupMeetupTest(t)
+		defer mr.Close()
+
+		mockRepo.EXPECT().GetByID(ctx, meetupID, userID).
+			Return(&domain.Meetup{ID: meetupID, CreatorID: userID, Title: "old", Status: "cancelled"}, nil)
+		// Update не ожидается: отказ обязан случиться до записи.
+
+		newTitle := "new title"
+		_, err := svc.UpdateMeetup(ctx, userID, meetupID, dto.UpdateMeetupRequest{Title: &newTitle})
+		require.ErrorIs(t, err, ErrMeetupFinished)
+	})
+
 	t.Run("update without tags keeps them", func(t *testing.T) {
 		mr, _, mockRepo, svc := setupMeetupTest(t)
 		defer mr.Close()

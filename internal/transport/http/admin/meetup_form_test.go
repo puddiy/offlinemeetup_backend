@@ -213,6 +213,31 @@ func TestMeetupEditForeignMeetupRedirects(t *testing.T) {
 	require.Equal(t, "/admin/meetups/40?err=not_official", rec.Header().Get("Location"))
 }
 
+// Отменённый официальный митап не правится: форму не показываем, а прямой
+// POST (устаревшая вкладка) получает понятное сообщение, а не «сбой».
+func TestMeetupEditCancelledRedirects(t *testing.T) {
+	meetups := &stubMeetupSvc{detail: &dto.AdminMeetupDetail{AdminMeetupRow: dto.AdminMeetupRow{ID: 41, IsOfficial: true, Status: "cancelled"}}}
+	h := newFormHandler(t, meetups, &stubTagSvc{})
+
+	req := formPost("/admin/meetups/41/edit", "41", nil)
+	req.Method = http.MethodGet
+	rec := httptest.NewRecorder()
+	h.MeetupEdit(rec, req)
+
+	require.Equal(t, "/admin/meetups/41?err=meetup_not_active", rec.Header().Get("Location"))
+}
+
+func TestMeetupUpdateCancelledRedirects(t *testing.T) {
+	meetups := &stubMeetupSvc{updateErr: service.ErrMeetupFinished}
+	h := newFormHandler(t, meetups, &stubTagSvc{})
+
+	rec := httptest.NewRecorder()
+	h.MeetupUpdate(rec, formPost("/admin/meetups/41/edit", "41", validForm()))
+
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Equal(t, "/admin/meetups/41?err=meetup_not_active", rec.Header().Get("Location"))
+}
+
 // В форме правки скрытый тег, уже стоящий на митапе, остаётся видимым и
 // отмеченным; скрытый и не стоящий — не предлагается вовсе.
 func TestMeetupEditTagOptions(t *testing.T) {

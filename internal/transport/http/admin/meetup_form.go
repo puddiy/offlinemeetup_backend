@@ -300,6 +300,12 @@ func (h *Handler) MeetupEdit(w http.ResponseWriter, r *http.Request) {
 		h.redirectToMeetup(w, r, id, "", noticeNotOfficial)
 		return
 	}
+	// Отменённый митап не правится (MeetupService.UpdateMeetup вернёт
+	// ErrMeetupFinished) — не показываем форму, которую нельзя сохранить.
+	if d.Status == "cancelled" {
+		h.redirectToMeetup(w, r, id, "", noticeMeetupNotActive)
+		return
+	}
 	h.renderMeetupForm(w, r, http.StatusOK, id, formValuesFromDetail(d, h.adminLocation()), nil)
 }
 
@@ -331,6 +337,8 @@ func (h *Handler) MeetupUpdate(w http.ResponseWriter, r *http.Request) {
 		h.redirectToMeetup(w, r, id, noticeMeetupUpdated, "")
 	case errors.Is(err, service.ErrForbidden):
 		h.redirectToMeetup(w, r, id, "", noticeNotOfficial)
+	case errors.Is(err, service.ErrMeetupFinished):
+		h.redirectToMeetup(w, r, id, "", noticeMeetupNotActive)
 	case errors.Is(err, service.ErrNotFound):
 		redirectWithNotice(w, r, meetupsPath, "", noticeMeetupNotFound)
 	case errors.Is(err, service.ErrInvalidInput):

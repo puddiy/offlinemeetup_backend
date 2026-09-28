@@ -200,6 +200,13 @@ func (s *MeetupService) UpdateMeetup(ctx context.Context, userID int64, meetupID
 	if existing.CreatorID != userID {
 		return nil, ErrForbidden
 	}
+	// Отменённый митап — история: его чат уже только для чтения, а участники
+	// видят его как отменённый. Правка переписала бы то, что они видели, —
+	// и после отмены модератором позволила бы автору подменить содержимое.
+	// Тот же сентинел, что у JoinMeetup на отменённом митапе (409).
+	if existing.Status == "cancelled" {
+		return nil, ErrMeetupFinished
+	}
 
 	if req.Title != nil {
 		existing.Title = *req.Title

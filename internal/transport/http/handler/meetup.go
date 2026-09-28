@@ -165,6 +165,7 @@ func (h *MeetupHandler) List(w http.ResponseWriter, r *http.Request) {
 // @Failure     400    {object}  response.ErrorResponse
 // @Failure     403    {object}  response.ErrorResponse
 // @Failure     404    {object}  response.ErrorResponse
+// @Failure     409    {object}  response.ErrorResponse  "митап отменён — правка запрещена"
 // @Router      /v1/meetups/{id} [patch]
 func (h *MeetupHandler) Update(w http.ResponseWriter, r *http.Request) {
 	userID, ok := requireUserID(w, r, h.log)

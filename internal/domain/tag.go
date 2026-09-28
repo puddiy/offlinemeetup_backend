@@ -7,6 +7,10 @@ type Tag struct {
 
 	ID   int64  `bun:",pk,autoincrement" json:"id"`
 	Name string `bun:",unique,notnull" json:"name"`
+	// IsHidden — тег скрыт из каталога и выбора (см. миграцию
+	// 20260928100000). Наружу не сериализуется: мобильный клиент видит
+	// теги только через dto.TagResponse.
+	IsHidden bool `bun:",notnull,default:false" json:"-"`
 }
 
 type UserTag struct {

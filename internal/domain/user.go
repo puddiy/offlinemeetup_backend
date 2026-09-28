@@ -23,8 +23,12 @@ type User struct {
 	// фильтрации, а на анонимизации: email обнулён, social_accounts и
 	// user_credentials удалены, refresh-токены отозваны, Status неактивен.
 	// Здесь это маркер для админки, а не защитный механизм.
-	DeletedAt *time.Time       `bun:"deleted_at,nullzero"`
-	Socials   []*SocialAccount `bun:"rel:has-many,join:id=user_id"`
+	DeletedAt *time.Time `bun:"deleted_at,nullzero"`
+	// IsSystem — служебный аккаунт «Meetuper», создатель официальных
+	// митапов. Войти под ним нельзя (нет email и учётных данных), а
+	// админка запрещает его бан и удаление (service.ErrSystemAccount).
+	IsSystem bool             `bun:",notnull,default:false"`
+	Socials  []*SocialAccount `bun:"rel:has-many,join:id=user_id"`
 
 	Tags []*Tag `bun:"m2m:user_tags,join:User=User,join:Tag=Tag"`
 

@@ -1,49 +1,56 @@
 {{define "tags"}}{{template "layout" .}}{{end}}
 {{define "content"}}
-<div class="card">
-    <h2 style="margin-top:0">Теги</h2>
-    <p style="color:var(--muted)">
-        Скрытый тег пропадает из каталога и из выбора в приложении, но остаётся на митапах
-        и в профилях, где уже стоит. Скрытие обратимо; удаления нет намеренно.
-    </p>
+<div class="page-header">
+    <div>
+        <h1>Теги</h1>
+        <p class="subtitle">Скрытый тег пропадает из каталога и из выбора в приложении, но остаётся на митапах и в профилях, где уже стоит. Скрытие обратимо; удаления нет намеренно.</p>
+    </div>
+</div>
 
-    <form method="post" action="/admin/tags" style="display:flex;gap:10px;margin-bottom:18px">
-        <input type="text" name="name" placeholder="Новый тег" required minlength="2" maxlength="40">
-        <button type="submit">Добавить</button>
-    </form>
+<form method="post" action="/admin/tags" class="card inline-form">
+    <input type="text" name="name" placeholder="Новый тег" required minlength="2" maxlength="40" aria-label="Название нового тега">
+    <button type="submit">Добавить</button>
+</form>
 
-    <table>
+<div class="card card-flush">
+    <table class="table">
         <thead>
-        <tr><th>ID</th><th>Название</th><th>Митапов</th><th>Профилей</th><th></th></tr>
+        <tr><th class="num">ID</th><th>Название</th><th class="num">Митапов</th><th class="num">Профилей</th><th></th></tr>
         </thead>
         <tbody>
         {{range .Data.Tags}}
-        <tr{{if .IsHidden}} style="color:var(--muted)"{{end}}>
-            <td>{{.ID}}</td>
+        <tr{{if .IsHidden}} class="row-muted"{{end}}>
+            <td class="num">{{.ID}}</td>
             <td>
-                <form method="post" action="/admin/tags/{{.ID}}/rename" style="display:flex;gap:6px;align-items:center">
-                    <input type="text" name="name" value="{{.Name}}" required minlength="2" maxlength="40">
-                    <button type="submit" style="background:var(--muted)">Переименовать</button>
-                    {{if .IsHidden}}<span style="font-size:12px">скрыт</span>{{end}}
-                </form>
+                <details class="rename">
+                    <summary>
+                        <span>{{.Name}}</span>
+                        {{if .IsHidden}}{{mark "neutral" "скрыт"}}{{end}}
+                        <span class="btn btn-ghost btn-sm">Переименовать</span>
+                    </summary>
+                    <form method="post" action="/admin/tags/{{.ID}}/rename" class="inline-form">
+                        <input type="text" name="name" value="{{.Name}}" required minlength="2" maxlength="40" aria-label="Новое название">
+                        <button type="submit" class="btn-sm">Сохранить</button>
+                    </form>
+                </details>
             </td>
-            <td>{{.Meetups}}</td>
-            <td>{{.Users}}</td>
-            <td>
+            <td class="num">{{.Meetups}}</td>
+            <td class="num">{{.Users}}</td>
+            <td class="num">
                 {{if .IsHidden}}
-                <form method="post" action="/admin/tags/{{.ID}}/unhide">
-                    <button type="submit">Показать</button>
+                <form method="post" action="/admin/tags/{{.ID}}/unhide" class="inline">
+                    <button type="submit" class="btn-secondary btn-sm">Показать</button>
                 </form>
                 {{else}}
-                <form method="post" action="/admin/tags/{{.ID}}/hide"
+                <form method="post" action="/admin/tags/{{.ID}}/hide" class="inline"
                       onsubmit="return confirm('Скрыть тег? Он пропадёт из выбора в приложении, но останется на митапах и в профилях.')">
-                    <button type="submit" style="background:var(--danger)">Скрыть</button>
+                    <button type="submit" class="btn-ghost-danger btn-sm">Скрыть</button>
                 </form>
                 {{end}}
             </td>
         </tr>
         {{else}}
-        <tr><td colspan="5" style="color:var(--muted)">Тегов нет</td></tr>
+        <tr><td colspan="5" class="empty">Тегов нет</td></tr>
         {{end}}
         </tbody>
     </table>

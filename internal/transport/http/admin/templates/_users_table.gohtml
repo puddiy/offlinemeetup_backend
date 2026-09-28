@@ -1,38 +1,31 @@
 {{define "users_table"}}
-<table>
+<table class="table">
     <thead>
     <tr>
-        <th>ID</th><th>Email</th><th>Username</th><th>Имя</th><th>Статус</th><th>Создан</th>
+        <th class="num">ID</th><th>Email</th><th>Username</th><th>Имя</th><th>Статус</th><th>Создан</th>
     </tr>
     </thead>
     <tbody>
     {{range .Page.Items}}
-        <tr>
-            <td><a href="/admin/users/{{.ID}}">{{.ID}}</a></td>
-            <td>{{if .Email}}{{.Email}}{{else}}<span style="color:var(--muted)">—</span>{{end}}</td>
-            <td>{{.Username}}</td>
-            <td>{{.DisplayName}}{{if .IsSystem}} <span style="color:var(--accent);font-size:12px">служебный</span>{{end}}</td>
-            <td>
-                {{if .IsDeleted}}<span style="color:var(--danger)">удалён</span>
-                {{else}}{{.Status}}{{end}}
-            </td>
-            <td>{{.CreatedAt.Format "2006-01-02"}}</td>
-        </tr>
+    <tr>
+        <td class="num"><a href="/admin/users/{{.ID}}">{{.ID}}</a></td>
+        <td>{{if .Email}}{{.Email}}{{else}}<span class="muted">—</span>{{end}}</td>
+        <td>{{.Username}}</td>
+        <td>{{.DisplayName}} {{if .IsSystem}}{{mark "accent" "служебный"}}{{end}}</td>
+        <td>{{if .IsDeleted}}{{mark "danger" "удалён"}}{{else}}{{badge "user_status" .Status}}{{end}}</td>
+        <td class="nowrap">{{date .CreatedAt}}</td>
+    </tr>
     {{else}}
-        <tr><td colspan="6" style="color:var(--muted)">Ничего не найдено</td></tr>
+    <tr><td colspan="6" class="empty">Ничего не найдено</td></tr>
     {{end}}
     </tbody>
 </table>
 
-<div style="margin-top:14px;display:flex;align-items:center;gap:12px">
-    <span style="color:var(--muted);font-size:13px">
-        Всего: {{.Page.Total}}{{if .Page.Pages}} · страница {{.Page.CurrentPage}} из {{.Page.Pages}}{{end}}
+<div class="pager">
+    <span>Всего: {{.Page.Total}}{{if .Page.Pages}} · страница {{.Page.CurrentPage}} из {{.Page.Pages}}{{end}}</span>
+    <span class="links">
+        {{if .Page.HasPrev}}<a class="btn btn-secondary btn-sm" href="{{.LinkWithOffset .Page.PrevOffset}}">← Назад</a>{{end}}
+        {{if .Page.HasNext}}<a class="btn btn-secondary btn-sm" href="{{.LinkWithOffset .Page.NextOffset}}">Вперёд →</a>{{end}}
     </span>
-    {{if .Page.HasPrev}}
-        <a href="{{.LinkWithOffset .Page.PrevOffset}}">← назад</a>
-    {{end}}
-    {{if .Page.HasNext}}
-        <a href="{{.LinkWithOffset .Page.NextOffset}}">вперёд →</a>
-    {{end}}
 </div>
 {{end}}

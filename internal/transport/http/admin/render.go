@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/domain"
 )
@@ -40,18 +41,71 @@ type PageData struct {
 	Error string
 	Flash string
 	Data  any
+	// Section — активный раздел меню. Заполняет Render по имени страницы
+	// (pageSection), хендлеры его не задают.
+	Section string
+}
+
+// pageSection — раздел меню для каждой страницы: по нему layout подсвечивает
+// активный пункт. Страница входа меню не имеет.
+var pageSection = map[string]string{
+	"dashboard":     "dashboard",
+	"users":         "users",
+	"user_detail":   "users",
+	"reports":       "reports",
+	"report_detail": "reports",
+	"meetups":       "meetups",
+	"meetup_detail": "meetups",
+	"meetup_form":   "meetups",
+	"tags":          "tags",
 }
 
 type Renderer struct {
 	tpl      map[string]*template.Template
 	partials *template.Template
 	log      *slog.Logger
+	loc      *time.Location
+}
+
+// RendererOption настраивает Renderer.
+type RendererOption func(*Renderer)
+
+// WithLocation задаёт пояс, в котором шаблоны показывают время (функции dt и
+// date). nil игнорируется — остаётся UTC.
+func WithLocation(loc *time.Location) RendererOption {
+	return func(r *Renderer) {
+		if loc != nil {
+			r.loc = loc
+		}
+	}
+}
+
+// formatDateTime — «02.01.2006 15:04» в поясе админки.
+func (r *Renderer) formatDateTime(t time.Time) string { return t.In(r.loc).Format("02.01.2006 15:04") }
+
+// formatDate — «02.01.2006» в поясе админки.
+func (r *Renderer) formatDate(t time.Time) string { return t.In(r.loc).Format("02.01.2006") }
+
+// funcs — функции, доступные всем шаблонам и фрагментам.
+func (r *Renderer) funcs() template.FuncMap {
+	return template.FuncMap{
+		"badge": badge,
+		"mark":  mark,
+		"dt":    r.formatDateTime,
+		"date":  r.formatDate,
+	}
 }
 
 // NewRenderer разбирает все шаблоны один раз, на старте приложения.
 // Ошибка шаблона обязана валить процесс при запуске, а не отдавать 500
 // первому зашедшему модератору.
-func NewRenderer(log *slog.Logger) (*Renderer, error) {
+func NewRenderer(log *slog.Logger, opts ...RendererOption) (*Renderer, error) {
+	r := &Renderer{log: log, loc: time.UTC}
+	for _, opt := range opts {
+		opt(r)
+	}
+	funcs := r.funcs()
+
 	tpl := make(map[string]*template.Template, len(pages))
 
 	for _, page := range pages {
@@ -60,7 +114,7 @@ func NewRenderer(log *slog.Logger) (*Renderer, error) {
 			"templates/" + page + ".gohtml",
 		}, partialFiles...)
 
-		t, err := template.New(page).ParseFS(templatesFS, files...)
+		t, err := template.New(page).Funcs(funcs).ParseFS(templatesFS, files...)
 		if err != nil {
 			return nil, fmt.Errorf("parse admin template %q: %w", page, err)
 		}
@@ -68,12 +122,14 @@ func NewRenderer(log *slog.Logger) (*Renderer, error) {
 	}
 
 	// Отдельный набор для самостоятельного рендера фрагментов.
-	partials, err := template.New("partials").ParseFS(templatesFS, partialFiles...)
+	partials, err := template.New("partials").Funcs(funcs).ParseFS(templatesFS, partialFiles...)
 	if err != nil {
 		return nil, fmt.Errorf("parse admin partials: %w", err)
 	}
 
-	return &Renderer{tpl: tpl, partials: partials, log: log}, nil
+	r.tpl = tpl
+	r.partials = partials
+	return r, nil
 }
 
 // Render отрисовывает страницу.
@@ -87,6 +143,11 @@ func (r *Renderer) Render(w http.ResponseWriter, status int, name string, data a
 		r.log.Error("unknown admin template", slog.String("name", name))
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
+	}
+
+	if pd, isPage := data.(PageData); isPage {
+		pd.Section = pageSection[name]
+		data = pd
 	}
 
 	var buf bytes.Buffer

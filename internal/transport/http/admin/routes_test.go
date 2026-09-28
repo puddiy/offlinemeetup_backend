@@ -223,3 +223,14 @@ func TestRoutesModeratorCanListMeetups(t *testing.T) {
 	get.AddCookie(&http.Cookie{Name: middleware.AdminSessionCookieName, Value: "live-session"})
 	require.Equal(t, http.StatusOK, serve(root, get).Code)
 }
+
+// Таблица стилей — публичная статика, как HTMX: она нужна и странице входа.
+func TestRoutesServeStylesheet(t *testing.T) {
+	root := newRoutesAs(t, domain.AdminRoleAdmin, &stubUserSvc{})
+
+	rec := serve(root, httptest.NewRequest(http.MethodGet, "http://example.com/admin/static/admin.css", nil))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Header().Get("Content-Type"), "text/css")
+	require.Contains(t, rec.Body.String(), "--accent")
+}

@@ -1,12 +1,29 @@
 {{define "dashboard"}}{{template "layout" .}}{{end}}
 {{define "content"}}
-<div class="card">
-    <h2 style="margin-top:0">Дашборд</h2>
-    <p style="color:var(--muted)">
-        Вы вошли как <strong>{{.Admin.Email}}</strong> (роль: {{.Admin.Role}}).
-    </p>
-    <p style="color:var(--muted)">
-        Разделы модерации, пользователей и аналитики появятся в следующих милстоунах.
-    </p>
+<div class="page-header">
+    <div>
+        <h1>Дашборд</h1>
+        <p class="subtitle">Метрики появятся в следующем милстоуне, а пока — быстрый переход к разделам.</p>
+    </div>
+</div>
+<div class="grid-tiles">
+    <a class="card tile" href="/admin/reports">
+        <h2>Жалобы</h2>
+        <p class="muted">Очередь модерации: открытые жалобы, от старых к новым.</p>
+    </a>
+    <a class="card tile" href="/admin/users">
+        <h2>Пользователи</h2>
+        <p class="muted">Поиск, блокировка, отзыв сессий, удаление аккаунта.</p>
+    </a>
+    <a class="card tile" href="/admin/meetups">
+        <h2>Митапы</h2>
+        <p class="muted">Все митапы, отмена, официальные встречи от «Meetuper».</p>
+    </a>
+    {{if eq (printf "%s" .Admin.Role) "admin"}}
+    <a class="card tile" href="/admin/tags">
+        <h2>Теги</h2>
+        <p class="muted">Справочник интересов: добавить, переименовать, скрыть.</p>
+    </a>
+    {{end}}
 </div>
 {{end}}

@@ -1,18 +1,19 @@
 {{define "login"}}{{template "layout" .}}{{end}}
 {{define "content"}}
 <div class="login-wrap">
+    <div class="brand">Meetuper <span>admin</span></div>
     <div class="card">
-        <h2 style="margin-top:0">Вход в админку</h2>
+        <h1 class="card-title">Вход</h1>
         <form method="post" action="/admin/login">
-            <label>
+            <label class="field">
                 <span>Email</span>
                 <input type="email" name="email" autocomplete="username" required autofocus>
             </label>
-            <label>
+            <label class="field">
                 <span>Пароль</span>
                 <input type="password" name="password" autocomplete="current-password" required>
             </label>
-            <button type="submit">Войти</button>
+            <button type="submit" class="btn-block">Войти</button>
         </form>
     </div>
 </div>

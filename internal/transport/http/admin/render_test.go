@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/domain"
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/dto"
@@ -106,4 +107,38 @@ func TestRenderUsersPageIncludesLayoutAndTable(t *testing.T) {
 	body := rec.Body.String()
 	require.Contains(t, body, "<!DOCTYPE html>")
 	require.Contains(t, body, "b@x.io")
+}
+
+// Review Focus #3: 21:30 UTC — это 00:30 СЛЕДУЮЩЕГО дня по Москве.
+func TestDateTimeUsesRendererLocation(t *testing.T) {
+	msk, err := time.LoadLocation("Europe/Moscow")
+	require.NoError(t, err)
+	r, err := NewRenderer(slog.New(slog.DiscardHandler), WithLocation(msk))
+	require.NoError(t, err)
+
+	ts := time.Date(2026, 10, 4, 21, 30, 0, 0, time.UTC)
+	require.Equal(t, "05.10.2026 00:30", r.formatDateTime(ts))
+	require.Equal(t, "05.10.2026", r.formatDate(ts))
+}
+
+func TestRendererDefaultsToUTC(t *testing.T) {
+	r, err := NewRenderer(slog.New(slog.DiscardHandler), WithLocation(nil))
+	require.NoError(t, err)
+	require.Equal(t, "04.10.2026 21:30", r.formatDateTime(time.Date(2026, 10, 4, 21, 30, 0, 0, time.UTC)))
+}
+
+func TestRenderMarksActiveSection(t *testing.T) {
+	r, err := NewRenderer(slog.New(slog.DiscardHandler))
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	r.Render(rec, 200, "dashboard", PageData{
+		Title: "Дашборд",
+		Admin: &domain.AdminUser{ID: 1, Email: "a@x.io", Role: domain.AdminRoleAdmin},
+	})
+
+	body := rec.Body.String()
+	require.Contains(t, body, `href="/admin/" class="active"`)
+	require.NotContains(t, body, `href="/admin/users" class="active"`)
+	require.Contains(t, body, `href="/admin/static/admin.css"`)
 }

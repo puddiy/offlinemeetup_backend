@@ -171,7 +171,7 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 
 	// Шаблоны разбираются здесь, на старте: битый шаблон обязан валить
 	// запуск, а не первый запрос модератора.
-	adminRenderer, err := adminTransport.NewRenderer(log)
+	adminRenderer, err := adminTransport.NewRenderer(log, adminTransport.WithLocation(cfg.AdminTimezone))
 	if err != nil {
 		log.Error("failed to parse admin templates", slog.String("error", err.Error()))
 		panic(fmt.Errorf("failed to parse admin templates: %w", err))

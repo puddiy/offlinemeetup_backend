@@ -13,7 +13,7 @@
 
     <table style="margin-bottom:22px">
         <tr><th style="width:190px">ID</th><td>{{$u.ID}}</td></tr>
-        <tr><th>Email</th><td>{{if $u.Email}}{{$u.Email}}{{else}}<span style="color:var(--muted)">обнулён при удалении</span>{{end}}</td></tr>
+        <tr><th>Email</th><td>{{if $u.Email}}{{$u.Email}}{{else if .Data.IsSystem}}<span style="color:var(--muted)">нет — у служебного аккаунта email не бывает</span>{{else}}<span style="color:var(--muted)">обнулён при удалении</span>{{end}}</td></tr>
         <tr><th>Username</th><td>{{.Data.Username}}</td></tr>
         <tr><th>Статус</th><td>{{$u.Status}}</td></tr>
         <tr><th>Роль</th><td>{{$u.Role}}</td></tr>

@@ -268,6 +268,26 @@ func TestUserDetailRenders(t *testing.T) {
 	require.Contains(t, body, "Удалить аккаунт")
 }
 
+// Служебный аккаунт: без кнопок бана и удаления, и пустой email не выдаётся
+// за «обнулён при удалении» — его никто не удалял.
+func TestUserDetailSystemAccount(t *testing.T) {
+	svc := &stubUserSvc{user: &domain.User{
+		ID: 30, Status: domain.UserStatusActive, IsSystem: true,
+		Profile: &domain.Profile{UserID: 30, Username: "meetuper"},
+	}}
+	h := newUsersHandler(t, svc)
+
+	rec := httptest.NewRecorder()
+	h.UserDetail(rec, getWithChiParam("/admin/users/30", "30", &domain.AdminUser{ID: 7, Role: domain.AdminRoleAdmin}))
+
+	body := rec.Body.String()
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, body, "у служебного аккаунта email не бывает")
+	require.NotContains(t, body, "обнулён при удалении")
+	require.NotContains(t, body, "Заблокировать")
+	require.NotContains(t, body, "Удалить аккаунт")
+}
+
 // У пользователя может не быть профиля — карточка обязана отрисоваться,
 // а не упасть на разыменовании nil.
 func TestUserDetailWithoutProfile(t *testing.T) {

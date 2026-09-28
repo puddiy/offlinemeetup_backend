@@ -307,8 +307,6 @@ func anonymizedUsername(userID int64) string {
 	return "deleted-" + strconv.FormatInt(userID, 10)
 }
 
-// expectOneRow превращает «обновлено ноль строк» в сентинел. Bun не считает
-// это ошибкой, а для нас «обновили несуществующего» — именно not found.
 // SystemUserID отдаёт id служебного аккаунта «Meetuper». Строку создаёт
 // миграция 20260928100000, и её отсутствие — поломка окружения: вызывающий
 // (app.New) обязан упасть на старте, а не работать без создателя
@@ -329,6 +327,8 @@ func (r *UserAdminRepo) SystemUserID(ctx context.Context) (int64, error) {
 	return id, nil
 }
 
+// expectOneRow превращает «обновлено ноль строк» в сентинел. Bun не считает
+// это ошибкой, а для нас «обновили несуществующего» — именно not found.
 func expectOneRow(res sql.Result, notFound error) error {
 	affected, err := res.RowsAffected()
 	if err != nil {

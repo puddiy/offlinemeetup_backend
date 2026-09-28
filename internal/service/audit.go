@@ -31,6 +31,9 @@ const (
 	AuditActionTagRename = "tag.rename"
 	AuditActionTagHide   = "tag.hide"
 	AuditActionTagUnhide = "tag.unhide"
+
+	AuditActionMeetupCreateOfficial = "meetup.create_official"
+	AuditActionMeetupUpdateOfficial = "meetup.update_official"
 )
 
 // AuditEvent — то, что вызывающий хочет записать в журнал. Отдельный тип, а

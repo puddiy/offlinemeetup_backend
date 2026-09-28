@@ -1,0 +1,59 @@
+{{define "meetups"}}{{template "layout" .}}{{end}}
+{{define "content"}}
+{{$d := .Data}}
+<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2 style="margin-top:0">Митапы</h2>
+        {{if $d.CanPublish}}<a href="/admin/meetups/new"><button type="button">+ Официальный митап</button></a>{{end}}
+    </div>
+
+    <form method="get" action="/admin/meetups" style="display:flex;gap:10px;align-items:flex-end;margin-bottom:18px">
+        <label style="margin-bottom:0;flex:1">
+            <span>Поиск (название, id)</span>
+            <input type="text" name="q" value="{{$d.Search}}">
+        </label>
+        <label style="margin-bottom:0">
+            <span>Статус</span>
+            <select name="status" style="padding:9px 10px;border:1px solid var(--line);border-radius:6px">
+                <option value="">все</option>
+                <option value="active"{{if eq $d.Status "active"}} selected{{end}}>впереди / идёт</option>
+                <option value="past"{{if eq $d.Status "past"}} selected{{end}}>прошёл</option>
+                <option value="cancelled"{{if eq $d.Status "cancelled"}} selected{{end}}>отменён</option>
+            </select>
+        </label>
+        <label style="margin-bottom:0;display:flex;align-items:center;gap:6px">
+            <input type="checkbox" name="official" value="1"{{if $d.OnlyOfficial}} checked{{end}} style="width:auto">
+            <span style="margin-bottom:0">только официальные</span>
+        </label>
+        <button type="submit">Искать</button>
+    </form>
+
+    <table>
+        <thead>
+        <tr><th>ID</th><th>Название</th><th>Статус</th><th>Начало</th><th>Создатель</th><th>Участников</th></tr>
+        </thead>
+        <tbody>
+        {{range $d.Page.Items}}
+        <tr>
+            <td>{{.ID}}</td>
+            <td><a href="/admin/meetups/{{.ID}}">{{.Title}}</a>{{if .IsOfficial}} <span style="color:var(--accent);font-size:12px">официальный</span>{{end}}</td>
+            <td>{{.Status}}</td>
+            <td>{{$d.Local .StartTime}}</td>
+            <td>{{.CreatorName}}</td>
+            <td>{{.ParticipantsCount}}</td>
+        </tr>
+        {{else}}
+        <tr><td colspan="6" style="color:var(--muted)">Ничего не найдено</td></tr>
+        {{end}}
+        </tbody>
+    </table>
+
+    <div style="margin-top:14px;display:flex;align-items:center;gap:12px">
+        <span style="color:var(--muted);font-size:13px">
+            Всего: {{$d.Page.Total}}{{if $d.Page.Pages}} · страница {{$d.Page.CurrentPage}} из {{$d.Page.Pages}}{{end}}
+        </span>
+        {{if $d.Page.HasPrev}}<a href="{{$d.LinkWithOffset $d.Page.PrevOffset}}">← назад</a>{{end}}
+        {{if $d.Page.HasNext}}<a href="{{$d.LinkWithOffset $d.Page.NextOffset}}">вперёд →</a>{{end}}
+    </div>
+</div>
+{{end}}

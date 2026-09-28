@@ -405,3 +405,33 @@ func TestRemoveCoverWithoutReportedFileIsTargetGone(t *testing.T) {
 
 	require.ErrorIs(t, f.svc.RemoveCover(context.Background(), 7, 100, ""), ErrTargetGone)
 }
+
+// Отмена со страницы митапа, без жалобы: открытые жалобы на митап
+// закрываются тем же действием, иначе висели бы в очереди на отменённый.
+func TestCancelMeetupByAdminResolvesReportsAndAudits(t *testing.T) {
+	f := setupModerationTest(t)
+	expectReportTx(f)
+	f.meetups.EXPECT().CancelTx(gomock.Any(), gomock.Any(), int64(55)).Return([]int64{42, 3}, nil)
+	f.reports.EXPECT().
+		ResolveTargetTx(gomock.Any(), gomock.Any(), domain.ReportTargetMeetup, int64(55), int64(7), AuditActionMeetupCancel).
+		Return(2, nil)
+
+	require.NoError(t, f.svc.CancelMeetupByAdmin(context.Background(), 7, 55, "1.2.3.4"))
+
+	ev := f.audit.events[0]
+	require.Equal(t, AuditActionMeetupCancel, ev.Action)
+	require.Equal(t, "55", ev.TargetID)
+	require.Equal(t, "meetup_page", ev.Details["source"])
+	require.Equal(t, 2, ev.Details["resolved_reports"])
+	require.Equal(t, []int64{55}, f.mcache.invalidated)
+	require.Equal(t, []int64{42, 3}, f.ccache.invalidated)
+}
+
+func TestCancelMeetupByAdminAlreadyCancelled(t *testing.T) {
+	f := setupModerationTest(t)
+	expectReportTx(f)
+	f.meetups.EXPECT().CancelTx(gomock.Any(), gomock.Any(), int64(55)).Return(nil, repo.ErrMeetupNotActive)
+
+	require.ErrorIs(t, f.svc.CancelMeetupByAdmin(context.Background(), 7, 55, ""), ErrTargetGone)
+	require.Empty(t, f.audit.events)
+}

@@ -204,3 +204,22 @@ func TestRoutesTagsForbiddenForModerator(t *testing.T) {
 	post.AddCookie(&http.Cookie{Name: middleware.AdminSessionCookieName, Value: "live-session"})
 	require.Equal(t, http.StatusForbidden, serve(root, post).Code)
 }
+
+func TestRoutesModeratorCanListMeetups(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	log := slog.New(slog.DiscardHandler)
+	rend, err := NewRenderer(log)
+	require.NoError(t, err)
+	cfg := &config.Config{Env: "local"}
+	auth := &stubAuth{admin: &domain.AdminUser{ID: 7, Email: "mod@x.io", Role: domain.AdminRoleModerator, IsActive: true}}
+	h := NewHandler(Deps{Auth: auth, Meetups: &stubMeetupSvc{}, Moderation: &stubModeration{}, Audit: &recordingAudit{},
+		Render: rend, Cfg: cfg, Log: log})
+	root := chi.NewRouter()
+	root.Mount("/admin", Routes(h, rdb, log, cfg))
+
+	get := httptest.NewRequest(http.MethodGet, "http://example.com/admin/meetups", nil)
+	get.AddCookie(&http.Cookie{Name: middleware.AdminSessionCookieName, Value: "live-session"})
+	require.Equal(t, http.StatusOK, serve(root, get).Code)
+}

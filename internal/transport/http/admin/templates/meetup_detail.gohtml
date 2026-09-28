@@ -1,0 +1,40 @@
+{{define "meetup_detail"}}{{template "layout" .}}{{end}}
+{{define "content"}}
+{{$d := .Data}}
+{{$m := $d.Meetup}}
+<div class="card">
+    <a href="/admin/meetups" style="color:var(--muted);font-size:13px">← к списку</a>
+    <h2 style="margin:10px 0 18px">
+        {{$m.Title}}
+        {{if $m.IsOfficial}}<span style="color:var(--accent);font-size:14px">· официальный</span>{{end}}
+    </h2>
+
+    {{if $m.CoverURL}}<img src="{{$m.CoverURL}}" alt="" style="max-width:320px;border-radius:6px;margin-bottom:16px">{{end}}
+
+    <table style="margin-bottom:22px">
+        <tr><th style="width:190px">ID</th><td>{{$m.ID}}</td></tr>
+        <tr><th>Статус</th><td>{{$m.Status}}</td></tr>
+        <tr><th>Публичный</th><td>{{if $m.IsPublic}}да{{else}}нет{{end}}</td></tr>
+        <tr><th>Начало</th><td>{{$d.Local $m.StartTime}}</td></tr>
+        <tr><th>Окончание</th><td>{{$d.Local $m.EndTime}}</td></tr>
+        <tr><th>Адрес</th><td>{{$m.Address}} <span style="color:var(--muted)">({{$m.Lat}}, {{$m.Lng}})</span></td></tr>
+        <tr><th>Создатель</th><td><a href="/admin/users/{{$m.CreatorID}}">{{$m.CreatorName}}</a></td></tr>
+        <tr><th>Участников</th><td>{{$m.ParticipantsCount}}</td></tr>
+        <tr><th>Теги</th><td>{{range $m.Tags}}{{.}} {{else}}<span style="color:var(--muted)">нет</span>{{end}}</td></tr>
+        {{if $m.InviteToken}}<tr><th>Инвайт-токен</th><td><code>{{$m.InviteToken}}</code></td></tr>{{end}}
+    </table>
+    <div style="white-space:pre-wrap;margin-bottom:22px">{{$m.Description}}</div>
+
+    {{if eq $m.Status "active"}}
+    <div style="display:flex;gap:10px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:18px">
+        {{if $d.CanEdit}}
+        <a href="/admin/meetups/{{$m.ID}}/edit"><button type="button">Редактировать</button></a>
+        {{end}}
+        <form method="post" action="/admin/meetups/{{$m.ID}}/cancel"
+              onsubmit="return confirm('Отменить митап? Чат станет только для чтения, открытые жалобы на митап закроются. Действие необратимо.')">
+            <button type="submit" style="background:var(--danger)">Отменить митап</button>
+        </form>
+    </div>
+    {{end}}
+</div>
+{{end}}

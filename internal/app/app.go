@@ -177,10 +177,12 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 		panic(fmt.Errorf("failed to parse admin templates: %w", err))
 	}
 	adminTagService := service.NewAdminTagService(tagRepo, auditService, tagCache, log)
+	adminMeetupService := service.NewAdminMeetupService(meetupRepo, meetupService, auditService, systemUserID, cfg.S3PublicURL, log)
 	adminHandler := adminTransport.NewHandler(adminTransport.Deps{
 		Auth:       adminAuthService,
 		Users:      adminUserService,
 		Moderation: moderationService,
+		Meetups:    adminMeetupService,
 		Tags:       adminTagService,
 		Audit:      auditService,
 		Render:     adminRenderer,

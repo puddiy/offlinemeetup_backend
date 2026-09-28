@@ -24,6 +24,9 @@ const (
 	noticeAvatarRemoved   notice = "avatar_removed"
 	noticeCoverRemoved    notice = "cover_removed"
 
+	noticeMeetupCreated notice = "meetup_created"
+	noticeMeetupUpdated notice = "meetup_updated"
+
 	noticeTagCreated  notice = "tag_created"
 	noticeTagRenamed  notice = "tag_renamed"
 	noticeTagHidden   notice = "tag_hidden"
@@ -39,6 +42,10 @@ const (
 	noticeTargetGone       notice = "target_gone"
 	noticeWrongAction      notice = "wrong_action"
 	noticeModerationFailed notice = "moderation_failed"
+
+	noticeMeetupNotActive notice = "meetup_not_active"
+	noticeNotOfficial     notice = "not_official"
+	noticeMeetupNotFound  notice = "meetup_not_found"
 
 	noticeTagNameInvalid notice = "tag_name_invalid"
 	noticeTagNameTaken   notice = "tag_name_taken"
@@ -60,6 +67,8 @@ var (
 		noticeMessageDeleted:  "Сообщение удалено у всех участников чата",
 		noticeAvatarRemoved:   "Аватар удалён",
 		noticeCoverRemoved:    "Обложка удалена",
+		noticeMeetupCreated:   "Официальный митап опубликован",
+		noticeMeetupUpdated:   "Изменения сохранены",
 		noticeTagCreated:      "Тег добавлен",
 		noticeTagRenamed:      "Тег переименован",
 		noticeTagHidden:       "Тег скрыт: он пропал из выбора, но остался на митапах и в профилях",
@@ -76,6 +85,9 @@ var (
 		noticeTargetGone:       "Контента уже нет: его удалил автор или другой модератор. Отклоните жалобу",
 		noticeWrongAction:      "Это действие не подходит для жалобы такого типа",
 		noticeModerationFailed: "Не удалось выполнить действие",
+		noticeMeetupNotActive:  "Митап уже отменён",
+		noticeNotOfficial:      "Править можно только официальные митапы; чужой митап можно лишь отменить",
+		noticeMeetupNotFound:   "Митап не найден",
 		noticeTagNameInvalid:   "Название тега — от 2 до 40 символов",
 		noticeTagNameTaken:     "Такой тег уже есть (регистр не учитывается)",
 		noticeTagNotFound:      "Тег не найден",

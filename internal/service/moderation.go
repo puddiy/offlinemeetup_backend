@@ -223,6 +223,45 @@ func (s *ModerationService) CancelMeetup(ctx context.Context, actorID, reportID 
 	return nil
 }
 
+// CancelMeetupByAdmin отменяет митап со страницы митапа — без жалобы.
+// Та же транзакция, что у CancelMeetup: отмена, закрытие ВСЕХ открытых
+// жалоб на митап (иначе они висели бы в очереди на отменённый митап) и
+// запись журнала. details.source отличает это действие от отмены по жалобе.
+func (s *ModerationService) CancelMeetupByAdmin(ctx context.Context, actorID, meetupID int64, ip string) error {
+	if actorID == 0 || meetupID == 0 {
+		return ErrInvalidInput
+	}
+
+	var participants []int64
+	err := s.d.Reports.RunInTx(ctx, func(tx bun.Tx) error {
+		ids, err := s.d.Meetups.CancelTx(ctx, tx, meetupID)
+		if err != nil {
+			return err
+		}
+		participants = ids
+
+		n, err := s.d.Reports.ResolveTargetTx(ctx, tx, domain.ReportTargetMeetup, meetupID, actorID, AuditActionMeetupCancel)
+		if err != nil {
+			return err
+		}
+		return s.d.Audit.Record(ctx, tx, AuditEvent{
+			AdminID:    actorID,
+			Action:     AuditActionMeetupCancel,
+			TargetType: "meetup",
+			TargetID:   strconv.FormatInt(meetupID, 10),
+			IP:         ip,
+			Details:    map[string]any{"source": "meetup_page", "resolved_reports": n},
+		})
+	})
+	if err != nil {
+		return mapModerationError(err, "cancel meetup")
+	}
+
+	s.invalidateMeetup(ctx, meetupID)
+	s.invalidateChats(ctx, participants)
+	return nil
+}
+
 // DeleteMessage удаляет сообщение по жалобе и возвращает то, что нужно
 // транспорту для рассылки messageDeleted.
 //

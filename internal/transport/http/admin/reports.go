@@ -22,6 +22,7 @@ type ModerationSvc interface {
 	ListReports(ctx context.Context, f service.ReportFilter) (dto.Page[dto.AdminReportRow], error)
 	GetReport(ctx context.Context, id int64) (*dto.AdminReportDetail, error)
 	Dismiss(ctx context.Context, actorID, reportID int64, ip string) error
+	CancelMeetupByAdmin(ctx context.Context, actorID, meetupID int64, ip string) error
 	CancelMeetup(ctx context.Context, actorID, reportID int64, ip string) error
 	DeleteMessage(ctx context.Context, actorID, reportID int64, ip string) (*service.MessageRemoval, error)
 	RemoveAvatar(ctx context.Context, actorID, reportID int64, ip string) error

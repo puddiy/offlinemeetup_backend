@@ -87,6 +87,12 @@ func Routes(h *Handler, rdb *redis.Client, log *slog.Logger, cfg *config.Config)
 		r.Post("/reports/{id}/remove-avatar", h.ReportRemoveAvatar)
 		r.Post("/reports/{id}/remove-cover", h.ReportRemoveCover)
 
+		// Митапы: просмотр и отмена — модерация, открыты обеим ролям.
+		// Публикация и правка официальных — в группе «только admin» ниже.
+		r.Get("/meetups", h.MeetupsList)
+		r.Get("/meetups/{id}", h.MeetupDetail)
+		r.Post("/meetups/{id}/cancel", h.MeetupCancel)
+
 		// Контент-менеджмент — работа роли admin (domain.AdminRoleAdmin):
 		// справочник тегов, публикация и правка официальных митапов.
 		// Модератору закрыты и чтение, и запись: это не модерация.

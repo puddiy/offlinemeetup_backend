@@ -58,6 +58,10 @@ func (s *stubModeration) CancelMeetup(_ context.Context, a, id int64, _ string) 
 	return s.act("cancel-meetup", a, id)
 }
 
+func (s *stubModeration) CancelMeetupByAdmin(_ context.Context, a, id int64, _ string) error {
+	return s.act("cancel-meetup-by-admin", a, id)
+}
+
 func (s *stubModeration) RemoveAvatar(_ context.Context, a, id int64, _ string) error {
 	return s.act("remove-avatar", a, id)
 }

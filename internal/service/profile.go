@@ -135,6 +135,9 @@ func (s *ProfileService) UpdateProfile(ctx context.Context, userID int64, req dt
 
 	if req.TagIDs != nil {
 		if err := s.userRepo.UpdateTags(ctx, userID, req.TagIDs); err != nil {
+			if errors.Is(err, repo.ErrTagUnavailable) {
+				return nil, fmt.Errorf("tags: %w", ErrInvalidInput)
+			}
 			return nil, fmt.Errorf("updating tags error: %w", err)
 		}
 	}

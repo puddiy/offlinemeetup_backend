@@ -212,6 +212,26 @@ func TestProfileService_UpdateProfile(t *testing.T) {
 		tagRepo.AssertNotCalled(t, "UpdateTags", mock.Anything, mock.Anything, mock.Anything)
 	})
 
+	t.Run("скрытый или несуществующий тег — неверный ввод", func(t *testing.T) {
+		repo := new(MockProfileRepo)
+		tagRepo := new(MockUserTagUpdater)
+
+		existing := &domain.Profile{ID: 100, UserID: testUserID, Username: "old"}
+		repo.On("GetByUserID", mock.Anything, testUserID).Return(existing, nil)
+		repo.On("UpdateProfile", mock.Anything, mock.Anything).Return(existing, nil)
+		tagRepo.On("UpdateTags", mock.Anything, testUserID, []int64{99}).
+			Return(repoErrTagUnavailable())
+
+		_, pc := newProfileCache(t)
+		svc := NewProfileService(repo, tagRepo, pc, "https://s3.local")
+
+		_, err := svc.UpdateProfile(context.Background(), testUserID, dto.UpdateProfileRequest{
+			TagIDs: []int64{99},
+		})
+
+		assert.ErrorIs(t, err, ErrInvalidInput)
+	})
+
 	t.Run("avatar not image", func(t *testing.T) {
 		wantErr := repo.ErrFileNotImage
 
@@ -266,3 +286,7 @@ func TestProfileService_CacheHitAndInvalidate(t *testing.T) {
 	// 1 (первое чтение) + 1 (внутри UpdateProfile) + 1 (финальный GetProfile после инвалидации).
 	repo.AssertNumberOfCalls(t, "GetByUserID", 3)
 }
+
+// repoErrTagUnavailable — сентинел репозитория. Хелпер нужен потому, что в
+// подтестах локальная переменная repo затеняет одноимённый пакет.
+func repoErrTagUnavailable() error { return repo.ErrTagUnavailable }

@@ -21,7 +21,7 @@ type MeetupRepository interface {
 	GetForAuth(ctx context.Context, id, userID int64) (*repo.MeetupAuth, error)
 	GetByInviteToken(ctx context.Context, token uuid.UUID, currentUserID int64) (*domain.Meetup, error)
 	List(ctx context.Context, filter repo.MeetupQuery, currentUserID int64) ([]domain.Meetup, error)
-	Update(ctx context.Context, meetup *domain.Meetup, newTagIDs []int64) error
+	Update(ctx context.Context, meetup *domain.Meetup, tagIDs *[]int64) error
 	Delete(ctx context.Context, id int64) ([]int64, error)
 	Join(ctx context.Context, meetupID, userID int64) error
 	Leave(ctx context.Context, meetupID, userID int64) error
@@ -117,6 +117,8 @@ func mapMeetupRepoError(err error) error {
 		return fmt.Errorf("cover file: %w", ErrForbidden)
 	case errors.Is(err, repo.ErrFileNotImage):
 		return fmt.Errorf("cover file must be an image: %w", ErrInvalidInput)
+	case errors.Is(err, repo.ErrTagUnavailable):
+		return fmt.Errorf("tags: %w", ErrInvalidInput)
 	}
 	return err
 }
@@ -240,12 +242,7 @@ func (s *MeetupService) UpdateMeetup(ctx context.Context, userID int64, meetupID
 		}
 	}
 
-	var tagIDs []int64
-	if req.TagIDs != nil {
-		tagIDs = *req.TagIDs
-	}
-
-	if err := s.repo.Update(ctx, existing, tagIDs); err != nil {
+	if err := s.repo.Update(ctx, existing, req.TagIDs); err != nil {
 		return nil, mapMeetupRepoError(err)
 	}
 

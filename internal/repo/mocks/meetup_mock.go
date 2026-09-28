@@ -163,17 +163,17 @@ func (mr *MockMeetupRepositoryMockRecorder) List(ctx, filter, currentUserID any)
 }
 
 // Update mocks base method.
-func (m *MockMeetupRepository) Update(ctx context.Context, meetup *domain.Meetup, newTagIDs []int64) error {
+func (m *MockMeetupRepository) Update(ctx context.Context, meetup *domain.Meetup, tagIDs *[]int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Update", ctx, meetup, newTagIDs)
+	ret := m.ctrl.Call(m, "Update", ctx, meetup, tagIDs)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Update indicates an expected call of Update.
-func (mr *MockMeetupRepositoryMockRecorder) Update(ctx, meetup, newTagIDs any) *gomock.Call {
+func (mr *MockMeetupRepositoryMockRecorder) Update(ctx, meetup, tagIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockMeetupRepository)(nil).Update), ctx, meetup, newTagIDs)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockMeetupRepository)(nil).Update), ctx, meetup, tagIDs)
 }
 
 // MockchatCacheInvalidator is a mock of chatCacheInvalidator interface.

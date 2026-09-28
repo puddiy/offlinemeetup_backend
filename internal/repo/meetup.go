@@ -67,6 +67,13 @@ func (r *MeetupRepo) Create(ctx context.Context, meetup *domain.Meetup, chat *do
 		}
 	}
 
+	// Теги проверяются до вставки митапа: скрытый или несуществующий тег —
+	// это 400 клиенту, а не 500 на нарушении FK посреди транзакции.
+	tagIDs = uniqueIDs(tagIDs)
+	if err := checkMeetupTagsTx(ctx, tx, 0, tagIDs); err != nil {
+		return nil, err
+	}
+
 	_, err = tx.NewInsert().Model(meetup).Value("location", "ST_GeomFromText(?, 4326)", meetup.Location.String()).Returning("id, created_at, invite_token").Exec(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("meetup creation failed: %w", err)
@@ -274,11 +281,23 @@ func (r *MeetupRepo) List(ctx context.Context, filter MeetupQuery, currentUserID
 	return meetups, err
 }
 
-func (r *MeetupRepo) Update(ctx context.Context, meetup *domain.Meetup, newTagIDs []int64) error {
+// Update сохраняет редактируемые поля митапа. tagIDs == nil — теги не
+// трогать (PATCH без поля tags); указатель на пустой срез — снять все.
+func (r *MeetupRepo) Update(ctx context.Context, meetup *domain.Meetup, tagIDs *[]int64) error {
 	return r.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		// Новая обложка должна принадлежать создателю и быть изображением.
 		if meetup.CoverFileID.Valid {
 			if err := imageFileOwnedBy(ctx, tx, meetup.CoverFileID.UUID, meetup.CreatorID); err != nil {
+				return err
+			}
+		}
+
+		var ids []int64
+		if tagIDs != nil {
+			ids = uniqueIDs(*tagIDs)
+			// До удаления старых связей: иначе «скрытый тег уже стоит»
+			// не распознается (см. checkMeetupTagsTx).
+			if err := checkMeetupTagsTx(ctx, tx, meetup.ID, ids); err != nil {
 				return err
 			}
 		}
@@ -296,25 +315,22 @@ func (r *MeetupRepo) Update(ctx context.Context, meetup *domain.Meetup, newTagID
 			return err
 		}
 
-		_, err = tx.NewDelete().Model((*domain.MeetupTag)(nil)).Where("meetup_id = ?", meetup.ID).Exec(ctx)
-		if err != nil {
-			return err
+		if tagIDs == nil {
+			return nil
 		}
 
-		if len(newTagIDs) > 0 {
-			meetupTags := make([]domain.MeetupTag, len(newTagIDs))
-			for i, tagID := range newTagIDs {
-				meetupTags[i] = domain.MeetupTag{
-					MeetupID: meetup.ID,
-					TagID:    tagID,
-				}
-			}
-			_, err := tx.NewInsert().Model(&meetupTags).Exec(ctx)
-			if err != nil {
-				return err
-			}
+		if _, err := tx.NewDelete().Model((*domain.MeetupTag)(nil)).Where("meetup_id = ?", meetup.ID).Exec(ctx); err != nil {
+			return err
 		}
-		return nil
+		if len(ids) == 0 {
+			return nil
+		}
+		meetupTags := make([]domain.MeetupTag, len(ids))
+		for i, tagID := range ids {
+			meetupTags[i] = domain.MeetupTag{MeetupID: meetup.ID, TagID: tagID}
+		}
+		_, err = tx.NewInsert().Model(&meetupTags).Exec(ctx)
+		return err
 	})
 }
 

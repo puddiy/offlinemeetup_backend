@@ -387,10 +387,55 @@ func TestMeetupService_UpdateMeetup(t *testing.T) {
 		_, err := svc.UpdateMeetup(ctx, userID, meetupID, dto.UpdateMeetupRequest{CoverFileID: &coverFileID})
 		require.ErrorIs(t, err, ErrInvalidInput)
 	})
+
+	// Review Focus #1: PATCH без поля tags стирал все теги митапа — сервис
+	// передавал nil, а репозиторий безусловно чистил meetup_tags.
+	t.Run("update without tags keeps them", func(t *testing.T) {
+		mr, _, mockRepo, svc := setupMeetupTest(t)
+		defer mr.Close()
+
+		mockRepo.EXPECT().GetByID(ctx, meetupID, userID).
+			Return(&domain.Meetup{ID: meetupID, CreatorID: userID, Title: "old"}, nil)
+		mockRepo.EXPECT().Update(ctx, gomock.Any(), gomock.Nil()).Return(nil)
+
+		newTitle := "new title"
+		_, err := svc.UpdateMeetup(ctx, userID, meetupID, dto.UpdateMeetupRequest{Title: &newTitle})
+		require.NoError(t, err)
+	})
+
+	t.Run("explicit tags are passed through", func(t *testing.T) {
+		mr, _, mockRepo, svc := setupMeetupTest(t)
+		defer mr.Close()
+
+		tags := []int64{2, 5}
+		mockRepo.EXPECT().GetByID(ctx, meetupID, userID).
+			Return(&domain.Meetup{ID: meetupID, CreatorID: userID, Title: "old"}, nil)
+		mockRepo.EXPECT().Update(ctx, gomock.Any(), gomock.Eq(&tags)).Return(nil)
+
+		_, err := svc.UpdateMeetup(ctx, userID, meetupID, dto.UpdateMeetupRequest{TagIDs: &tags})
+		require.NoError(t, err)
+	})
+
+	t.Run("hidden or unknown tag is invalid input", func(t *testing.T) {
+		mr, _, mockRepo, svc := setupMeetupTest(t)
+		defer mr.Close()
+
+		tags := []int64{99}
+		mockRepo.EXPECT().GetByID(ctx, meetupID, userID).
+			Return(&domain.Meetup{ID: meetupID, CreatorID: userID, Title: "old"}, nil)
+		mockRepo.EXPECT().Update(ctx, gomock.Any(), gomock.Any()).Return(repo.ErrTagUnavailable)
+
+		_, err := svc.UpdateMeetup(ctx, userID, meetupID, dto.UpdateMeetupRequest{TagIDs: &tags})
+		require.ErrorIs(t, err, ErrInvalidInput)
+	})
 }
 
 func TestMapMeetupRepoError_NotImage(t *testing.T) {
 	assert.ErrorIs(t, mapMeetupRepoError(repo.ErrFileNotImage), ErrInvalidInput)
+}
+
+func TestMapMeetupRepoError_TagUnavailable(t *testing.T) {
+	assert.ErrorIs(t, mapMeetupRepoError(repo.ErrTagUnavailable), ErrInvalidInput)
 }
 
 func TestMeetupService_DeleteMeetup(t *testing.T) {

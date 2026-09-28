@@ -263,7 +263,13 @@ func (r *UserRepo) GetTagsByUserID(ctx context.Context, userID int64) ([]domain.
 }
 
 func (r *UserRepo) UpdateTags(ctx context.Context, userID int64, tagIDs []int64) error {
+	tagIDs = uniqueIDs(tagIDs)
 	return r.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		// До удаления старых связей — см. checkMeetupTagsTx.
+		if err := checkUserTagsTx(ctx, tx, userID, tagIDs); err != nil {
+			return err
+		}
+
 		_, err := tx.NewDelete().Model((*domain.UserTag)(nil)).Where("user_id = ?", userID).Exec(ctx)
 		if err != nil {
 			return err

@@ -26,6 +26,7 @@
     --danger-weak: #fef3f2;
     --neutral-weak: #f2f4f7;
     --on-accent: #ffffff;
+    --on-danger: #ffffff;
 
     --radius: 10px;
     --radius-sm: 6px;
@@ -66,6 +67,9 @@
         --danger-weak: #2d1616;
         --neutral-weak: #242933;
         --on-accent: #0b1220;
+        /* Светлый коралловый фон тёмной темы с белым текстом даёт контраст
+           ~2.9:1 — ниже порога читаемости 4.5:1. Тёмный текст — ~6.5:1. */
+        --on-danger: #1f0a08;
         --shadow: none;
         color-scheme: dark;
     }
@@ -150,7 +154,7 @@ button, .btn {
 button:hover, .btn:hover { background: var(--accent-hover); text-decoration: none; }
 .btn-secondary { background: var(--surface); color: var(--fg); border-color: var(--line-strong); }
 .btn-secondary:hover { background: var(--surface-2); }
-.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger { background: var(--danger); color: var(--on-danger); }
 .btn-danger:hover { background: var(--danger-hover); }
 .btn-ghost { background: transparent; color: var(--muted); }
 .btn-ghost:hover { background: var(--surface-2); color: var(--fg); }

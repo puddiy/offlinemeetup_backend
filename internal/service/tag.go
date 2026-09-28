@@ -8,7 +8,8 @@ import (
 )
 
 type TagRepository interface {
-	GetAll(ctx context.Context) ([]domain.Tag, error)
+	// ListVisible — теги каталога: скрытые (tags.is_hidden) в выбор не попадают.
+	ListVisible(ctx context.Context) ([]domain.Tag, error)
 }
 
 // tagCache кеширует глобальный список тегов. Объявлен у потребителя,
@@ -28,7 +29,7 @@ func NewTagService(repo TagRepository, cache tagCache) *TagService {
 
 func (s *TagService) ListTags(ctx context.Context) ([]dto.TagResponse, error) {
 	return s.cache.ListTags(ctx, func() ([]dto.TagResponse, error) {
-		tags, err := s.repo.GetAll(ctx)
+		tags, err := s.repo.ListVisible(ctx)
 		if err != nil {
 			return nil, err
 		}

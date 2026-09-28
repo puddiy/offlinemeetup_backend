@@ -42,19 +42,19 @@ func (m *MockTagRepository) EXPECT() *MockTagRepositoryMockRecorder {
 	return m.recorder
 }
 
-// GetAll mocks base method.
-func (m *MockTagRepository) GetAll(ctx context.Context) ([]domain.Tag, error) {
+// ListVisible mocks base method.
+func (m *MockTagRepository) ListVisible(ctx context.Context) ([]domain.Tag, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAll", ctx)
+	ret := m.ctrl.Call(m, "ListVisible", ctx)
 	ret0, _ := ret[0].([]domain.Tag)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetAll indicates an expected call of GetAll.
-func (mr *MockTagRepositoryMockRecorder) GetAll(ctx any) *gomock.Call {
+// ListVisible indicates an expected call of ListVisible.
+func (mr *MockTagRepositoryMockRecorder) ListVisible(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAll", reflect.TypeOf((*MockTagRepository)(nil).GetAll), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListVisible", reflect.TypeOf((*MockTagRepository)(nil).ListVisible), ctx)
 }
 
 // MocktagCache is a mock of tagCache interface.

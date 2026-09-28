@@ -40,7 +40,7 @@ func TestTagService_ListTags(t *testing.T) {
 			{ID: 1, Name: "Tech"},
 			{ID: 2, Name: "Sport"},
 		}
-		repo.EXPECT().GetAll(ctx).Return(tags, nil)
+		repo.EXPECT().ListVisible(ctx).Return(tags, nil)
 
 		resp, err := srv.ListTags(ctx)
 		assert.NoError(t, err)
@@ -54,7 +54,7 @@ func TestTagService_ListTags(t *testing.T) {
 	t.Run("repo_error", func(t *testing.T) {
 		repo, srv := newTagService(t)
 		repoErr := errors.New("db error")
-		repo.EXPECT().GetAll(ctx).Return(nil, repoErr)
+		repo.EXPECT().ListVisible(ctx).Return(nil, repoErr)
 
 		resp, err := srv.ListTags(ctx)
 		assert.ErrorIs(t, err, repoErr)
@@ -63,7 +63,7 @@ func TestTagService_ListTags(t *testing.T) {
 
 	t.Run("empty_list", func(t *testing.T) {
 		repo, srv := newTagService(t)
-		repo.EXPECT().GetAll(ctx).Return([]domain.Tag{}, nil)
+		repo.EXPECT().ListVisible(ctx).Return([]domain.Tag{}, nil)
 
 		resp, err := srv.ListTags(ctx)
 		assert.NoError(t, err)
@@ -74,7 +74,7 @@ func TestTagService_ListTags(t *testing.T) {
 		repo, srv := newTagService(t)
 		tags := []domain.Tag{{ID: 1, Name: "Tech"}}
 		// GetAll должен вызваться РОВНО один раз на два чтения.
-		repo.EXPECT().GetAll(ctx).Return(tags, nil).Times(1)
+		repo.EXPECT().ListVisible(ctx).Return(tags, nil).Times(1)
 
 		first, err := srv.ListTags(ctx)
 		assert.NoError(t, err)

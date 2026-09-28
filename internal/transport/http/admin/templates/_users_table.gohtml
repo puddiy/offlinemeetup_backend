@@ -11,7 +11,7 @@
             <td><a href="/admin/users/{{.ID}}">{{.ID}}</a></td>
             <td>{{if .Email}}{{.Email}}{{else}}<span style="color:var(--muted)">—</span>{{end}}</td>
             <td>{{.Username}}</td>
-            <td>{{.DisplayName}}</td>
+            <td>{{.DisplayName}}{{if .IsSystem}} <span style="color:var(--accent);font-size:12px">служебный</span>{{end}}</td>
             <td>
                 {{if .IsDeleted}}<span style="color:var(--danger)">удалён</span>
                 {{else}}{{.Status}}{{end}}

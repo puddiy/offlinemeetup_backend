@@ -16,6 +16,9 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+// testSystemUserID — id служебного аккаунта в тестах сервисов админки.
+const testSystemUserID = int64(999)
+
 type adminUserFixture struct {
 	repo    *mocks.MockAdminUserRepository
 	tokens  *mocks.MockRefreshTokenRevoker
@@ -45,7 +48,7 @@ func setupAdminUserTest(t *testing.T) *adminUserFixture {
 		ccache:  &fakeChatCache{},
 	}
 	f.svc = NewAdminUserService(f.repo, f.tokens, f.audit, f.cache, f.mcache, f.ccache,
-		f.creator, f.files, f.s3, slog.New(slog.DiscardHandler))
+		f.creator, f.files, f.s3, testSystemUserID, slog.New(slog.DiscardHandler))
 	return f
 }
 
@@ -535,4 +538,29 @@ func TestDeleteOwnAccountCancelsMeetups(t *testing.T) {
 	require.Contains(t, f.mcache.invalidated, int64(8))
 	require.Equal(t, []int64{42, 3}, f.ccache.invalidated)
 	require.Empty(t, f.audit.events, "самоудаление в журнал админов не пишется")
+}
+
+// Review Focus #4: бан служебного аккаунта каскадом отменил бы все
+// официальные митапы, удаление — анонимизировало бы их автора. Отказ
+// обязан случиться ДО любого похода в БД: у моков нет ожиданий, и любой
+// вызов репозитория провалит тест.
+func TestSystemAccountIsProtected(t *testing.T) {
+	f := setupAdminUserTest(t)
+	ctx := context.Background()
+
+	require.ErrorIs(t, f.svc.SetStatus(ctx, 1, testSystemUserID, domain.UserStatusBanned, ""), ErrSystemAccount)
+	require.ErrorIs(t, f.svc.DeleteByAdmin(ctx, 1, testSystemUserID, ""), ErrSystemAccount)
+	require.ErrorIs(t, f.svc.LogoutEverywhere(ctx, 1, testSystemUserID, ""), ErrSystemAccount)
+	require.Empty(t, f.audit.events)
+}
+
+func TestListUsersMarksSystemAccount(t *testing.T) {
+	f := setupAdminUserTest(t)
+	sys := userWithProfile(testSystemUserID, "", "meetuper", "Meetuper", domain.UserStatusActive)
+	sys.IsSystem = true
+	f.repo.EXPECT().List(gomock.Any(), gomock.Any()).Return([]domain.User{sys}, 1, nil)
+
+	page, err := f.svc.ListUsers(context.Background(), AdminUserFilter{})
+	require.NoError(t, err)
+	require.True(t, page.Items[0].IsSystem)
 }

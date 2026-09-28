@@ -28,6 +28,7 @@ const (
 	noticeRevokeFailed   notice = "revoke_failed"
 	noticeAlreadyDeleted notice = "already_deleted"
 	noticeDeleteFailed   notice = "delete_failed"
+	noticeSystemAccount  notice = "system_account"
 
 	noticeReportClosed     notice = "report_closed"
 	noticeTargetGone       notice = "target_gone"
@@ -55,6 +56,7 @@ var (
 		noticeRevokeFailed:   "Не удалось отозвать сессии",
 		noticeAlreadyDeleted: "Аккаунт уже был удалён",
 		noticeDeleteFailed:   "Не удалось удалить аккаунт",
+		noticeSystemAccount:  "Служебный аккаунт «Meetuper» нельзя блокировать, удалять или разлогинивать",
 
 		noticeReportClosed:     "Жалоба уже закрыта — возможно, её закрыло действие по другой жалобе на тот же контент",
 		noticeTargetGone:       "Контента уже нет: его удалил автор или другой модератор. Отклоните жалобу",

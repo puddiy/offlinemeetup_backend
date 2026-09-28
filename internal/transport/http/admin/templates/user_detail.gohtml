@@ -7,6 +7,9 @@
         {{.Data.DisplayName}}
         {{if .Data.IsDeleted}}<span style="color:var(--danger);font-size:14px">· удалён</span>{{end}}
     </h2>
+    {{if .Data.IsSystem}}
+    <p style="color:var(--muted)">Служебный аккаунт: создатель официальных митапов. Войти под ним нельзя, блокировка и удаление запрещены.</p>
+    {{end}}
 
     <table style="margin-bottom:22px">
         <tr><th style="width:190px">ID</th><td>{{$u.ID}}</td></tr>
@@ -21,7 +24,7 @@
         </td></tr>
     </table>
 
-    {{if not .Data.IsDeleted}}
+    {{if and (not .Data.IsDeleted) (not .Data.IsSystem)}}
     <div style="display:flex;gap:10px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:18px">
         {{if eq (printf "%s" $u.Status) "banned"}}
             <form method="post" action="/admin/users/{{$u.ID}}/unban">

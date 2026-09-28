@@ -488,3 +488,15 @@ func TestUserDetailBanAsksConfirmation(t *testing.T) {
 	require.Contains(t, body, `action="/admin/users/42/ban"`)
 	require.Contains(t, body, "митапы будут отменены")
 }
+
+func TestUserBanSystemAccountShowsNotice(t *testing.T) {
+	svc := &stubUserSvc{statusErr: service.ErrSystemAccount}
+	h := newUsersHandler(t, svc)
+	admin := &domain.AdminUser{ID: 1, Role: domain.AdminRoleAdmin}
+
+	rec := httptest.NewRecorder()
+	h.UserBan(rec, postWithChiParam("/admin/users/999/ban", "999", admin))
+
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Equal(t, "/admin/users/999?err=system_account", rec.Header().Get("Location"))
+}

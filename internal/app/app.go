@@ -91,6 +91,14 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 	credentialsRepo := repo.NewCredentialsRepo(db)
 	adminRepo := repo.NewAdminRepo(db)
 	userAdminRepo := repo.NewUserAdminRepo(db)
+	// Служебный аккаунт ищется один раз на старте: без него админка не
+	// может ни защитить его от бана, ни публиковать официальные митапы.
+	// Миграции к этому моменту уже применены (cmd/app/main.go).
+	systemUserID, err := lookupSystemUserID(userAdminRepo)
+	if err != nil {
+		log.Error("failed to find the system account", slog.String("error", err.Error()))
+		panic(fmt.Errorf("failed to find the system account: %w", err))
+	}
 	auditRepo := repo.NewAuditRepo(db)
 	reportRepo := repo.NewReportRepo(db)
 
@@ -133,7 +141,7 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 	adminAuthService := service.NewAdminAuthService(adminRepo, adminSessions, cfg, log)
 	auditService := service.NewAuditService(auditRepo, log)
 	adminUserService := service.NewAdminUserService(userAdminRepo, refreshRepo, auditService,
-		profileCache, meetupCache, chatCache, meetupRepo, fileRepo, s3Client, log)
+		profileCache, meetupCache, chatCache, meetupRepo, fileRepo, s3Client, systemUserID, log)
 	reportService := service.NewReportService(reportRepo)
 	moderationService := service.NewModerationService(service.ModerationDeps{
 		Reports:      reportRepo,
@@ -238,4 +246,12 @@ func (a *App) Run(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// lookupSystemUserID — с таймаутом: зависшая БД на старте должна дать
+// понятную ошибку, а не вечное ожидание.
+func lookupSystemUserID(r *repo.UserAdminRepo) (int64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return r.SystemUserID(ctx)
 }

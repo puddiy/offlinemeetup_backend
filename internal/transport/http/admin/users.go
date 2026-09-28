@@ -147,6 +147,10 @@ func (h *Handler) setUserStatus(w http.ResponseWriter, r *http.Request, status d
 	}
 
 	if err := h.users.SetStatus(r.Context(), admin.ID, userID, status, h.clientIP(r)); err != nil {
+		if errors.Is(err, service.ErrSystemAccount) {
+			h.redirectToUser(w, r, userID, "", noticeSystemAccount)
+			return
+		}
 		h.log.Error("changing user status",
 			slog.Int64("user_id", userID), slog.String("status", string(status)), slog.Any("error", err))
 		h.redirectToUser(w, r, userID, "", noticeStatusFailed)
@@ -194,6 +198,10 @@ func (h *Handler) UserLogoutAll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.users.LogoutEverywhere(r.Context(), admin.ID, userID, h.clientIP(r)); err != nil {
+		if errors.Is(err, service.ErrSystemAccount) {
+			h.redirectToUser(w, r, userID, "", noticeSystemAccount)
+			return
+		}
 		h.log.Error("revoking user sessions", slog.Int64("user_id", userID), slog.Any("error", err))
 		h.redirectToUser(w, r, userID, "", noticeRevokeFailed)
 		return
@@ -210,6 +218,7 @@ type UserDetailData struct {
 	Username    string
 	DisplayName string
 	IsDeleted   bool
+	IsSystem    bool
 }
 
 // UserDetail рисует карточку пользователя.
@@ -243,7 +252,7 @@ func (h *Handler) UserDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := UserDetailData{User: user, IsDeleted: user.DeletedAt != nil}
+	data := UserDetailData{User: user, IsDeleted: user.DeletedAt != nil, IsSystem: user.IsSystem}
 	if user.Profile != nil {
 		data.Username = user.Profile.Username
 		data.DisplayName = domain.DisplayNameOf(user.Profile.Username, user.Profile.DisplayName)
@@ -280,6 +289,8 @@ func (h *Handler) UserDelete(w http.ResponseWriter, r *http.Request) {
 		h.redirectToUser(w, r, userID, "", noticeAlreadyDeleted)
 	case errors.Is(err, service.ErrNotFound):
 		http.Redirect(w, r, "/admin/users", http.StatusSeeOther)
+	case errors.Is(err, service.ErrSystemAccount):
+		h.redirectToUser(w, r, userID, "", noticeSystemAccount)
 	default:
 		h.log.Error("deleting user", slog.Int64("user_id", userID), slog.Any("error", err))
 		h.redirectToUser(w, r, userID, "", noticeDeleteFailed)

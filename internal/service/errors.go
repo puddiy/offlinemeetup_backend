@@ -5,8 +5,12 @@ import (
 )
 
 var (
-	ErrNotFound             = errors.New("resource not found")
-	ErrAlreadyExists        = errors.New("resource already exists")
+	ErrNotFound      = errors.New("resource not found")
+	ErrAlreadyExists = errors.New("resource already exists")
+	// ErrSystemAccount — действие над служебным аккаунтом «Meetuper»
+	// запрещено: бан отменил бы все официальные митапы, удаление —
+	// анонимизировало бы их автора.
+	ErrSystemAccount        = errors.New("system account cannot be modified")
 	ErrForbidden            = errors.New("action forbidden")
 	ErrUnauthorized         = errors.New("unauthorized")
 	ErrInvalidInput         = errors.New("invalid input")

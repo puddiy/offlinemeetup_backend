@@ -90,6 +90,7 @@ type AdminUserService struct {
 	creatorMeetups CreatorMeetupCanceller
 	files          FileStore
 	s3             S3DeleteObjectAPI
+	systemUserID   int64
 	log            *slog.Logger
 }
 
@@ -103,6 +104,7 @@ func NewAdminUserService(
 	creatorMeetups CreatorMeetupCanceller,
 	files FileStore,
 	s3c S3DeleteObjectAPI,
+	systemUserID int64,
 	log *slog.Logger,
 ) *AdminUserService {
 	return &AdminUserService{
@@ -115,6 +117,7 @@ func NewAdminUserService(
 		creatorMeetups: creatorMeetups,
 		files:          files,
 		s3:             s3c,
+		systemUserID:   systemUserID,
 		log:            log,
 	}
 }
@@ -177,6 +180,7 @@ func adminUserRow(u domain.User) dto.AdminUserRow {
 		Status:    string(u.Status),
 		CreatedAt: u.CreatedAt,
 		DeletedAt: u.DeletedAt,
+		IsSystem:  u.IsSystem,
 	}
 	if u.Profile != nil {
 		row.Username = u.Profile.Username
@@ -211,6 +215,9 @@ func (s *AdminUserService) SetStatus(ctx context.Context, actorID, userID int64,
 	}
 	if actorID == 0 || userID == 0 {
 		return ErrInvalidInput
+	}
+	if err := s.guardSystemAccount(userID); err != nil {
+		return err
 	}
 
 	var cancelled repo.CancelledMeetups
@@ -339,6 +346,9 @@ func (s *AdminUserService) LogoutEverywhere(ctx context.Context, actorID, userID
 	if actorID == 0 || userID == 0 {
 		return ErrInvalidInput
 	}
+	if err := s.guardSystemAccount(userID); err != nil {
+		return err
+	}
 
 	// Проверяем существование ПЕРЕД отзывом. RevokeAllForUser по неизвестному
 	// id обновляет ноль строк и не возвращает ошибки, поэтому без этой
@@ -381,6 +391,9 @@ func (s *AdminUserService) LogoutEverywhere(ctx context.Context, actorID, userID
 func (s *AdminUserService) DeleteByAdmin(ctx context.Context, actorID, userID int64, ip string) error {
 	if actorID == 0 || userID == 0 {
 		return ErrInvalidInput
+	}
+	if err := s.guardSystemAccount(userID); err != nil {
+		return err
 	}
 
 	var (
@@ -466,4 +479,14 @@ func (s *AdminUserService) mapDeleteError(err error) error {
 	default:
 		return fmt.Errorf("delete account: %w", err)
 	}
+}
+
+// guardSystemAccount запрещает админские действия над служебным аккаунтом.
+// Проверка по id, а не по флагу из БД: она обязана сработать до любой
+// мутации и не стоить запроса.
+func (s *AdminUserService) guardSystemAccount(userID int64) error {
+	if userID == s.systemUserID {
+		return ErrSystemAccount
+	}
+	return nil
 }

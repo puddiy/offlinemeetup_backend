@@ -15,6 +15,8 @@ type AdminUserRow struct {
 	Status      string     `json:"status"`
 	CreatedAt   time.Time  `json:"created_at"`
 	DeletedAt   *time.Time `json:"deleted_at"`
+	// IsSystem — служебный аккаунт «Meetuper» (создатель официальных митапов).
+	IsSystem bool `json:"is_system"`
 }
 
 // IsDeleted — удобство для шаблона: {{if .IsDeleted}} читается лучше,

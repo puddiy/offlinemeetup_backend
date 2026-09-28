@@ -263,3 +263,27 @@ func TestMeetupEditTagOptions(t *testing.T) {
 	require.Contains(t, body, "Старое (скрыт)")
 	require.NotContains(t, body, "Архив")
 }
+
+// Ошибки формы — по-русски. Переводится по КЛЮЧУ поля, а не по тексту:
+// английские строки dto.Validate — контракт мобильного API.
+func TestMeetupFormErrorsAreRussian(t *testing.T) {
+	v := validForm()
+	v.Set("title", "ab")
+	v.Set("lat", "95")
+
+	_, errs := formValues(v).toCreateRequest(moscow(t))
+
+	require.Equal(t, validationTexts["title"], errs["title"])
+	require.Equal(t, validationTexts["lat"], errs["lat"])
+}
+
+// Ошибка разбора («укажите дату») важнее ошибки Validate на том же поле
+// («в прошлом»): перевод не должен её затирать.
+func TestMeetupFormParseErrorWinsOverValidation(t *testing.T) {
+	v := validForm()
+	v.Set("start_time", "")
+
+	_, errs := formValues(v).toCreateRequest(moscow(t))
+
+	require.Equal(t, "укажите дату и время начала", errs["start_time"])
+}

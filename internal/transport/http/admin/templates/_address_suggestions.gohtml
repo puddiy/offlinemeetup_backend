@@ -1,7 +1,6 @@
 {{define "address_suggestions"}}
-{{if .Message}}<p style="color:var(--muted);margin:6px 0">{{.Message}}</p>{{end}}
+{{if .Message}}<p class="muted small">{{.Message}}</p>{{end}}
 {{range .Items}}
-<button type="button" hx-get="{{.Link}}" hx-target="#address-fields" hx-swap="innerHTML"
-        style="display:block;margin:4px 0;background:none;color:var(--accent);padding:0;text-align:left">{{.Value}}</button>
+<button type="button" class="btn-link" hx-get="{{.Link}}" hx-target="#address-fields" hx-swap="innerHTML">{{.Value}}</button>
 {{end}}
 {{end}}

@@ -45,12 +45,6 @@ type MeetupsPageData struct {
 	Status       string
 	OnlyOfficial bool
 	CanPublish   bool
-	Loc          *time.Location
-}
-
-// Local форматирует время в поясе админки.
-func (d MeetupsPageData) Local(t time.Time) string {
-	return t.In(d.Loc).Format("2006-01-02 15:04")
 }
 
 // LinkWithOffset — ПОЛНАЯ ссылка на страницу списка (см. UsersPageData.LinkWithOffset).
@@ -79,7 +73,6 @@ func (h *Handler) MeetupsList(w http.ResponseWriter, r *http.Request) {
 		Search:       q.Get("q"),
 		OnlyOfficial: q.Get("official") == "1",
 		CanPublish:   isAdminRole(admin),
-		Loc:          h.adminLocation(),
 	}
 	if s := q.Get("status"); meetupStatusFilters[s] {
 		data.Status = s
@@ -114,12 +107,6 @@ func (h *Handler) MeetupsList(w http.ResponseWriter, r *http.Request) {
 type MeetupDetailData struct {
 	Meetup  *dto.AdminMeetupDetail
 	CanEdit bool
-	Loc     *time.Location
-}
-
-// Local форматирует время в поясе админки.
-func (d MeetupDetailData) Local(t time.Time) string {
-	return t.In(d.Loc).Format("2006-01-02 15:04")
 }
 
 // MeetupDetail рисует карточку митапа.
@@ -141,7 +128,7 @@ func (h *Handler) MeetupDetail(w http.ResponseWriter, r *http.Request) {
 			h.log.Error("loading meetup", slog.Int64("meetup_id", id), slog.Any("error", err))
 		}
 		h.render.Render(w, status, "meetups", PageData{
-			Title: "Митапы", Admin: admin, Error: text, Data: MeetupsPageData{Loc: h.adminLocation()},
+			Title: "Митапы", Admin: admin, Error: text, Data: MeetupsPageData{},
 		})
 		return
 	}
@@ -155,7 +142,6 @@ func (h *Handler) MeetupDetail(w http.ResponseWriter, r *http.Request) {
 		Data: MeetupDetailData{
 			Meetup:  m,
 			CanEdit: m.IsOfficial && m.Status == "active" && isAdminRole(admin),
-			Loc:     h.adminLocation(),
 		},
 	})
 }

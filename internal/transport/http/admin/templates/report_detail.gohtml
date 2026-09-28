@@ -1,48 +1,56 @@
 {{define "report_detail"}}{{template "layout" .}}{{end}}
 {{define "content"}}
 {{$r := .Data}}
-<div class="card">
-    <a href="/admin/reports" style="color:var(--muted);font-size:13px">← к жалобам</a>
-    <h2 style="margin:10px 0 18px">Жалоба #{{$r.ID}} · {{$r.ReasonTitle}}</h2>
+<a class="back" href="/admin/reports">← Жалобы</a>
+<div class="page-header">
+    <div>
+        <h1>Жалоба #{{$r.ID}} · {{$r.ReasonTitle}}</h1>
+        <p class="subtitle">
+            {{badge "report_status" $r.Status}}
+            {{badge "report_target" $r.TargetType}} <span class="muted">#{{$r.TargetID}}</span>
+        </p>
+    </div>
+</div>
 
-    <table style="margin-bottom:22px">
-        <tr><th style="width:210px">Статус</th><td>{{$r.Status}}{{if $r.Resolution}} · {{$r.Resolution}}{{end}}</td></tr>
-        <tr><th>Цель</th><td>{{$r.TargetType}} #{{$r.TargetID}}</td></tr>
+<div class="card">
+    <table class="kv">
+        {{if $r.Resolution}}<tr><th>Решение</th><td>{{$r.Resolution}}</td></tr>{{end}}
         <tr><th>Автор контента</th><td><a href="/admin/users/{{$r.TargetOwnerID}}">пользователь {{$r.TargetOwnerID}}</a></td></tr>
         <tr><th>Пожаловался</th><td><a href="/admin/users/{{$r.ReporterID}}">пользователь {{$r.ReporterID}}</a></td></tr>
-        <tr><th>Создана</th><td>{{$r.CreatedAt.Format "2006-01-02 15:04"}}</td></tr>
-        {{if $r.Comment}}<tr><th>Комментарий</th><td style="white-space:pre-wrap">{{$r.Comment}}</td></tr>{{end}}
-        <tr><th>Контент на момент жалобы</th><td style="white-space:pre-wrap">{{$r.SnapshotText}}</td></tr>
+        <tr><th>Создана</th><td>{{dt $r.CreatedAt}}</td></tr>
+        {{if $r.Comment}}<tr><th>Комментарий</th><td class="pre">{{$r.Comment}}</td></tr>{{end}}
+        <tr><th>Контент на момент жалобы</th><td class="pre">{{$r.SnapshotText}}</td></tr>
         {{if $r.SnapshotFileURL}}<tr><th>Файл на момент жалобы</th><td><a href="{{$r.SnapshotFileURL}}" target="_blank" rel="noopener noreferrer">открыть</a></td></tr>{{end}}
     </table>
 
     {{if $r.IsOpen}}
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--line);padding-top:18px">
+    <div class="actions">
         {{if eq $r.TargetType "message"}}
-        <form method="post" action="/admin/reports/{{$r.ID}}/delete-message"
+        <form method="post" action="/admin/reports/{{$r.ID}}/delete-message" class="inline"
               onsubmit="return confirm('Удалить сообщение у всех участников чата? Вложение будет удалено из хранилища.')">
-            <button type="submit" style="background:var(--danger)">Удалить сообщение</button>
+            <button type="submit" class="btn-danger">Удалить сообщение</button>
         </form>
         {{end}}
         {{if eq $r.TargetType "meetup"}}
-        <form method="post" action="/admin/reports/{{$r.ID}}/cancel-meetup"
+        <form method="post" action="/admin/reports/{{$r.ID}}/cancel-meetup" class="inline"
               onsubmit="return confirm('Отменить митап? Чат станет только для чтения. Действие необратимо.')">
-            <button type="submit" style="background:var(--danger)">Отменить митап</button>
+            <button type="submit" class="btn-danger">Отменить митап</button>
         </form>
-        <form method="post" action="/admin/reports/{{$r.ID}}/remove-cover"
+        <form method="post" action="/admin/reports/{{$r.ID}}/remove-cover" class="inline"
               onsubmit="return confirm('Удалить обложку митапа из хранилища?')">
-            <button type="submit" style="background:var(--danger)">Снять обложку</button>
+            <button type="submit" class="btn-secondary">Снять обложку</button>
         </form>
         {{end}}
         {{if eq $r.TargetType "user"}}
-        <form method="post" action="/admin/reports/{{$r.ID}}/remove-avatar"
+        <form method="post" action="/admin/reports/{{$r.ID}}/remove-avatar" class="inline"
               onsubmit="return confirm('Удалить аватар пользователя из хранилища?')">
-            <button type="submit" style="background:var(--danger)">Снять аватар</button>
+            <button type="submit" class="btn-secondary">Снять аватар</button>
         </form>
         {{end}}
-        <form method="post" action="/admin/reports/{{$r.ID}}/dismiss">
-            <button type="submit" style="background:var(--muted)">Отклонить жалобу</button>
+        <form method="post" action="/admin/reports/{{$r.ID}}/dismiss" class="inline">
+            <button type="submit" class="btn-ghost">Отклонить жалобу</button>
         </form>
+        <span class="spacer"></span>
         <a href="/admin/users/{{$r.TargetOwnerID}}">Карточка автора (бан) →</a>
     </div>
     {{end}}

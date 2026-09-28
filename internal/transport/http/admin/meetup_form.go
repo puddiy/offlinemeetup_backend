@@ -118,13 +118,31 @@ func (v MeetupFormValues) fields(loc *time.Location) (meetupFields, map[string]s
 
 func isFinite(x float64) bool { return !math.IsNaN(x) && !math.IsInf(x, 0) }
 
+// validationTexts — русские тексты ошибок dto.Validate по ключу поля.
+// Переводим по КЛЮЧУ, а не по английскому тексту: строки dto — контракт
+// мобильного API, и сопоставлять их текст было бы хрупко.
+var validationTexts = map[string]string{
+	"title":       "Название — от 3 до 200 символов",
+	"description": "Описание — не длиннее 5000 символов",
+	"address":     "Адрес — не длиннее 500 символов",
+	"start_time":  "Начало не может быть в прошлом",
+	"end_time":    "Окончание должно быть позже начала",
+	"lat":         "Широта — от −90 до 90",
+	"lng":         "Долгота — от −180 до 180",
+}
+
 // mergeErrors добавляет ошибки Validate, не затирая ошибки разбора: при
 // пустой дате Validate скажет «в прошлом», а человеку нужно «укажите дату».
+// Известные ключи получают русский текст.
 func mergeErrors(dst, src map[string]string) {
 	for k, msg := range src {
-		if _, ok := dst[k]; !ok {
-			dst[k] = msg
+		if _, ok := dst[k]; ok {
+			continue
 		}
+		if ru, ok := validationTexts[k]; ok {
+			msg = ru
+		}
+		dst[k] = msg
 	}
 }
 

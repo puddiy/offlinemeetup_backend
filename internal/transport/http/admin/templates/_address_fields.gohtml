@@ -1,10 +1,10 @@
 {{define "address_fields"}}
-<label>
+<label class="field">
     <span>Адрес</span>
-    <input type="text" name="address" value="{{.Address}}" maxlength="500">
+    <input type="text" name="address" value="{{.Address}}" maxlength="500" placeholder="Введите адрес и нажмите «Найти адрес»">
 </label>
-<div style="display:flex;gap:10px">
-    <label style="flex:1"><span>Широта</span><input type="text" name="lat" value="{{.Lat}}" inputmode="decimal"></label>
-    <label style="flex:1"><span>Долгота</span><input type="text" name="lng" value="{{.Lng}}" inputmode="decimal"></label>
+<div class="form-row">
+    <label class="field"><span>Широта</span><input type="text" name="lat" value="{{.Lat}}" inputmode="decimal"></label>
+    <label class="field"><span>Долгота</span><input type="text" name="lng" value="{{.Lng}}" inputmode="decimal"></label>
 </div>
 {{end}}

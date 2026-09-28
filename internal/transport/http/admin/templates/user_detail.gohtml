@@ -1,53 +1,58 @@
 {{define "user_detail"}}{{template "layout" .}}{{end}}
 {{define "content"}}
 {{$u := .Data.User}}
+<a class="back" href="/admin/users">← Пользователи</a>
+<div class="page-header">
+    <div>
+        <h1>{{.Data.DisplayName}}</h1>
+        <p class="subtitle">
+            {{if .Data.IsDeleted}}{{mark "danger" "удалён"}}{{else}}{{badge "user_status" $u.Status}}{{end}}
+            {{if .Data.IsSystem}}{{mark "accent" "служебный"}}{{end}}
+        </p>
+    </div>
+</div>
+
 <div class="card">
-    <a href="/admin/users" style="color:var(--muted);font-size:13px">← к списку</a>
-    <h2 style="margin:10px 0 18px">
-        {{.Data.DisplayName}}
-        {{if .Data.IsDeleted}}<span style="color:var(--danger);font-size:14px">· удалён</span>{{end}}
-    </h2>
     {{if .Data.IsSystem}}
-    <p style="color:var(--muted)">Служебный аккаунт: создатель официальных митапов. Войти под ним нельзя, блокировка и удаление запрещены.</p>
+    <div class="note">Служебный аккаунт: создатель официальных митапов. Войти под ним нельзя, блокировка и удаление запрещены.</div>
     {{end}}
 
-    <table style="margin-bottom:22px">
-        <tr><th style="width:190px">ID</th><td>{{$u.ID}}</td></tr>
-        <tr><th>Email</th><td>{{if $u.Email}}{{$u.Email}}{{else if .Data.IsSystem}}<span style="color:var(--muted)">нет — у служебного аккаунта email не бывает</span>{{else}}<span style="color:var(--muted)">обнулён при удалении</span>{{end}}</td></tr>
+    <table class="kv">
+        <tr><th>ID</th><td>{{$u.ID}}</td></tr>
+        <tr><th>Email</th><td>{{if $u.Email}}{{$u.Email}}{{else if .Data.IsSystem}}<span class="muted">нет — у служебного аккаунта email не бывает</span>{{else}}<span class="muted">обнулён при удалении</span>{{end}}</td></tr>
         <tr><th>Username</th><td>{{.Data.Username}}</td></tr>
-        <tr><th>Статус</th><td>{{$u.Status}}</td></tr>
-        <tr><th>Роль</th><td>{{$u.Role}}</td></tr>
-        <tr><th>Зарегистрирован</th><td>{{$u.CreatedAt.Format "2006-01-02 15:04"}}</td></tr>
-        {{if $u.DeletedAt}}<tr><th>Удалён</th><td>{{$u.DeletedAt.Format "2006-01-02 15:04"}}</td></tr>{{end}}
+        <tr><th>Зарегистрирован</th><td>{{dt $u.CreatedAt}}</td></tr>
+        {{if $u.DeletedAt}}<tr><th>Удалён</th><td>{{dt $u.DeletedAt}}</td></tr>{{end}}
         <tr><th>Соцаккаунты</th><td>
-            {{if $u.Socials}}{{range $u.Socials}}{{.Provider}} {{end}}{{else}}<span style="color:var(--muted)">нет</span>{{end}}
+            {{if $u.Socials}}{{range $u.Socials}}{{mark "neutral" .Provider}} {{end}}{{else}}<span class="muted">нет</span>{{end}}
         </td></tr>
     </table>
 
     {{if and (not .Data.IsDeleted) (not .Data.IsSystem)}}
-    <div style="display:flex;gap:10px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:18px">
+    <div class="actions">
         {{if eq (printf "%s" $u.Status) "banned"}}
-            <form method="post" action="/admin/users/{{$u.ID}}/unban">
-                <button type="submit">Разблокировать</button>
-            </form>
+        <form method="post" action="/admin/users/{{$u.ID}}/unban" class="inline">
+            <button type="submit">Разблокировать</button>
+        </form>
         {{else}}
-            <form method="post" action="/admin/users/{{$u.ID}}/ban"
-                  onsubmit="return confirm('Заблокировать пользователя? Все его будущие и идущие митапы будут отменены, разблокировка их не вернёт.')">
-                <button type="submit" style="background:var(--danger)">Заблокировать</button>
-            </form>
+        <form method="post" action="/admin/users/{{$u.ID}}/ban" class="inline"
+              onsubmit="return confirm('Заблокировать пользователя? Все его будущие и идущие митапы будут отменены, разблокировка их не вернёт.')">
+            <button type="submit" class="btn-danger">Заблокировать</button>
+        </form>
         {{end}}
 
-        <form method="post" action="/admin/users/{{$u.ID}}/logout-all">
-            <button type="submit" style="background:var(--muted)">Отозвать все сессии</button>
+        <form method="post" action="/admin/users/{{$u.ID}}/logout-all" class="inline">
+            <button type="submit" class="btn-secondary">Отозвать все сессии</button>
         </form>
 
         {{/* Удаление необратимо и закрыто ролью admin — см. routes.go.
              Здесь кнопка лишь прячется от модератора, чтобы не предлагать
              действие, которое всё равно вернёт 403; сама защита в маршруте. */}}
         {{if and .Admin (eq (printf "%s" .Admin.Role) "admin")}}
-        <form method="post" action="/admin/users/{{$u.ID}}/delete"
+        <span class="spacer"></span>
+        <form method="post" action="/admin/users/{{$u.ID}}/delete" class="inline"
               onsubmit="return confirm('Удалить аккаунт? Email обнулится, соцпривязки и пароль будут удалены. Действие необратимо.')">
-            <button type="submit" style="background:var(--danger)">Удалить аккаунт</button>
+            <button type="submit" class="btn-ghost-danger">Удалить аккаунт</button>
         </form>
         {{end}}
     </div>

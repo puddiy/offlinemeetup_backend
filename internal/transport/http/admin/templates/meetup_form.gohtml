@@ -1,53 +1,75 @@
 {{define "meetup_form"}}{{template "layout" .}}{{end}}
 {{define "content"}}
 {{$d := .Data}}
-<div class="card">
-    <a href="/admin/meetups" style="color:var(--muted);font-size:13px">← к списку</a>
-    <h2 style="margin:10px 0 6px">{{if $d.MeetupID}}Редактирование митапа{{else}}Новый официальный митап{{end}}</h2>
-    <p style="color:var(--muted);margin-top:0">
-        Митап публикуется от служебного аккаунта «Meetuper». Время указывается в поясе {{$d.Timezone}}.
-    </p>
+<a class="back" href="/admin/meetups">← Митапы</a>
+<div class="page-header">
+    <div>
+        <h1>{{if $d.MeetupID}}Редактирование митапа{{else}}Новый официальный митап{{end}}</h1>
+        <p class="subtitle">Публикуется от служебного аккаунта «Meetuper». Время указывается в поясе {{$d.Timezone}}.</p>
+    </div>
+</div>
 
-    {{if $d.Errors}}
-    <div class="error">{{range $k, $v := $d.Errors}}<div>{{$k}}: {{$v}}</div>{{end}}</div>
-    {{end}}
+<form method="post" action="{{$d.Action}}" class="card form-narrow">
+    {{with index $d.Errors "form"}}<div class="error">{{.}}</div>{{end}}
 
-    <form method="post" action="{{$d.Action}}">
-        <label><span>Название</span>
-            <input type="text" name="title" value="{{$d.Values.Title}}" required minlength="3" maxlength="200"></label>
-        <label><span>Описание</span>
-            <textarea name="description" rows="6" maxlength="5000"
-                      style="width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:6px;font:inherit">{{$d.Values.Description}}</textarea></label>
-        <div style="display:flex;gap:10px">
-            <label style="flex:1"><span>Начало</span>
-                <input type="datetime-local" name="start_time" value="{{$d.Values.Start}}" required></label>
-            <label style="flex:1"><span>Окончание</span>
-                <input type="datetime-local" name="end_time" value="{{$d.Values.End}}" required></label>
-        </div>
+    <label class="field">
+        <span>Название</span>
+        <input type="text" name="title" value="{{$d.Values.Title}}" required minlength="3" maxlength="200">
+        {{with index $d.Errors "title"}}<div class="field-error">{{.}}</div>{{end}}
+    </label>
 
-        <div id="address-fields">{{template "address_fields" $d.Values}}</div>
-        <button type="button" hx-get="/admin/geo/suggest" hx-include="[name='address']"
-                hx-target="#address-suggestions" style="background:var(--muted)">Найти адрес</button>
-        <div id="address-suggestions" style="margin:8px 0 14px"></div>
+    <label class="field">
+        <span>Описание</span>
+        <textarea name="description" rows="6" maxlength="5000">{{$d.Values.Description}}</textarea>
+        {{with index $d.Errors "description"}}<div class="field-error">{{.}}</div>{{end}}
+    </label>
 
-        <label style="display:flex;gap:6px;align-items:center">
-            <input type="checkbox" name="is_public" value="1"{{if $d.Values.IsPublic}} checked{{end}} style="width:auto">
-            <span style="margin:0">Публичный (виден в ленте)</span>
+    <div class="form-row">
+        <label class="field">
+            <span>Начало</span>
+            <input type="datetime-local" name="start_time" value="{{$d.Values.Start}}" required>
+            {{with index $d.Errors "start_time"}}<div class="field-error">{{.}}</div>{{end}}
         </label>
+        <label class="field">
+            <span>Окончание</span>
+            <input type="datetime-local" name="end_time" value="{{$d.Values.End}}" required>
+            {{with index $d.Errors "end_time"}}<div class="field-error">{{.}}</div>{{end}}
+        </label>
+    </div>
 
-        <fieldset style="border:1px solid var(--line);border-radius:6px;margin:12px 0;padding:10px">
-            <legend style="color:var(--muted);font-size:13px">Теги</legend>
+    <div id="address-fields">{{template "address_fields" $d.Values}}</div>
+    {{with index $d.Errors "address"}}<div class="field-error">{{.}}</div>{{end}}
+    {{with index $d.Errors "coordinates"}}<div class="field-error">{{.}}</div>{{end}}
+    {{with index $d.Errors "lat"}}<div class="field-error">{{.}}</div>{{end}}
+    {{with index $d.Errors "lng"}}<div class="field-error">{{.}}</div>{{end}}
+    <button type="button" class="btn-secondary btn-sm" hx-get="/admin/geo/suggest" hx-include="[name='address']"
+            hx-target="#address-suggestions">Найти адрес</button>
+    <div id="address-suggestions" class="suggestions"></div>
+
+    <div class="field">
+        <label class="check">
+            <input type="checkbox" name="is_public" value="1"{{if $d.Values.IsPublic}} checked{{end}}>
+            Публичный — виден в ленте
+        </label>
+    </div>
+
+    <fieldset>
+        <legend>Теги</legend>
+        <div class="check-list">
             {{range $d.Tags}}
-            <label style="display:inline-flex;gap:4px;align-items:center;margin:0 14px 6px 0">
-                <input type="checkbox" name="tags" value="{{.ID}}"{{if .Checked}} checked{{end}} style="width:auto">
-                <span style="margin:0">{{.Name}}{{if .Hidden}} (скрыт){{end}}</span>
+            <label class="check">
+                <input type="checkbox" name="tags" value="{{.ID}}"{{if .Checked}} checked{{end}}>
+                {{.Name}}{{if .Hidden}} (скрыт){{end}}
             </label>
             {{else}}
-            <span style="color:var(--muted)">Теги не загрузились</span>
+            <span class="muted">Теги не загрузились</span>
             {{end}}
-        </fieldset>
+        </div>
+    </fieldset>
 
+    <div class="actions">
         <button type="submit">{{if $d.MeetupID}}Сохранить{{else}}Опубликовать{{end}}</button>
-    </form>
-</div>
+        <a class="btn btn-ghost" href="/admin/meetups">Отмена</a>
+    </div>
+</form>
 {{end}}

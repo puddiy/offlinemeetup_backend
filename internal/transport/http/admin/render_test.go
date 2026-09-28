@@ -142,3 +142,19 @@ func TestRenderMarksActiveSection(t *testing.T) {
 	require.NotContains(t, body, `href="/admin/users" class="active"`)
 	require.Contains(t, body, `href="/admin/static/admin.css"`)
 }
+
+// Внешний вид живёт в static/admin.css. style="…" в шаблоне — второй
+// источник правды о дизайне; из-за него админка и выглядела «сырой»: каждый
+// экран собирался на глаз. Тест держит правило.
+func TestTemplatesHaveNoInlineStyles(t *testing.T) {
+	entries, err := templatesFS.ReadDir("templates")
+	require.NoError(t, err)
+	require.NotEmpty(t, entries)
+
+	for _, e := range entries {
+		b, err := templatesFS.ReadFile("templates/" + e.Name())
+		require.NoError(t, err)
+		require.NotContains(t, string(b), "style=", "inline-стиль в %s — перенеси в static/admin.css", e.Name())
+		require.NotContains(t, string(b), "<style", "блок <style> в %s — перенеси в static/admin.css", e.Name())
+	}
+}

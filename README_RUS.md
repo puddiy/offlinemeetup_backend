@@ -72,7 +72,7 @@ transport/http/handler  →  service           →  repo         →  Bun / Post
 * Security-заголовки, лимит тела запроса и настраиваемый allowlist Origin для WebSocket.
 
 ### Наблюдаемость и эксплуатация
-* `GET /health` (liveness) и `GET /metrics` (Prometheus).
+* `GET /health` (liveness) и `GET /metrics` (Prometheus). `/metrics` требует `Authorization: Bearer $METRICS_TOKEN`; без токена ручка открыта только при `APP_ENV=local`, в остальных окружениях — 404.
 * Миграции встроены и накатываются автоматически при старте — отдельного шага миграции нет.
 * CI/CD через GitHub Actions (сборка/пуш Docker-образа, деплой).
 
@@ -125,6 +125,7 @@ PRESENCE_TTL=2m
 CACHE_TIMEOUT=200ms
 TRUST_PROXY_HEADERS=false          # доверять X-Forwarded-For/X-Real-IP только за доверенным прокси
 WS_ALLOWED_ORIGINS=http://localhost:3000
+METRICS_TOKEN=                     # Bearer-токен для GET /metrics; пусто — только локально
 
 # Админ-панель
 ADMIN_SESSION_TTL=8h              # окно простоя сессии (продлевается каждым запросом)

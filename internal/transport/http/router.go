@@ -46,7 +46,10 @@ func NewRouter(authHandler *handler.AuthHandler,
 		_, _ = w.Write([]byte("OK"))
 	})
 
-	router.Handle("/metrics", metricsHandler)
+	// /metrics смонтирован на публичном домене — без токена он открыт только
+	// локально (см. middleware.MetricsGuard).
+	router.With(authMiddleware.MetricsGuard(cfg.MetricsToken, cfg.Env)).
+		Handle("/metrics", metricsHandler)
 
 	// Админ-панель живёт вне /v1: это серверный HTML для браузера, а не
 	// версионированное мобильное API, и у неё свой контур авторизации

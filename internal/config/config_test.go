@@ -252,3 +252,18 @@ func TestLoadAdminTimezone(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func TestLoad_MetricsToken(t *testing.T) {
+	setRequiredSecrets(t)
+	t.Setenv("DB_DSN", "postgres://localhost/test")
+
+	t.Setenv("METRICS_TOKEN", "")
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, "", cfg.MetricsToken, "пустой токен — не ошибка старта")
+
+	t.Setenv("METRICS_TOKEN", "scrape-me")
+	cfg, err = Load()
+	require.NoError(t, err)
+	assert.Equal(t, "scrape-me", cfg.MetricsToken)
+}

@@ -83,7 +83,7 @@ Moderation: mobile clients report meetups, messages or users via `POST /v1/repor
 * Security headers, request body limit, and a configurable WebSocket origin allowlist.
 
 ### Observability & Ops
-* `GET /health` liveness check and `GET /metrics` (Prometheus).
+* `GET /health` liveness check and `GET /metrics` (Prometheus). `/metrics` needs `Authorization: Bearer $METRICS_TOKEN`; with no token set it is served only when `APP_ENV=local` and returns 404 elsewhere.
 * Migrations are embedded and applied automatically on startup — there is no separate migrate step.
 * CI/CD via GitHub Actions (Docker build/push, deploy).
 
@@ -155,6 +155,7 @@ PRESENCE_TTL=2m
 CACHE_TIMEOUT=200ms
 TRUST_PROXY_HEADERS=false          # trust X-Forwarded-For/X-Real-IP only behind a trusted proxy
 WS_ALLOWED_ORIGINS=http://localhost:3000
+METRICS_TOKEN=                     # Bearer token for GET /metrics; empty = local only
 
 # Admin panel
 ADMIN_SESSION_TTL=8h              # session idle window (extended on each request)

@@ -61,6 +61,11 @@ type Config struct {
 	// бакет на каждый запрос, обойдя лимит. Дефолт false (берём RemoteAddr).
 	TrustProxyHeaders bool
 
+	// MetricsToken — Bearer-токен для GET /metrics (METRICS_TOKEN). Пустой:
+	// ручка открыта только при APP_ENV=local, иначе 404 — см.
+	// middleware.MetricsGuard.
+	MetricsToken string
+
 	// MaxUploadSize — максимальный размер загружаемого файла в байтах
 	// (MAX_UPLOAD_SIZE, дефолт 100 MB). Применяется и в хендлере (MaxBytesReader),
 	// и в FileService.Upload.
@@ -165,6 +170,7 @@ func Load() (*Config, error) {
 		JWTSecret:        os.Getenv("JWT_SECRET_KEY"),
 		Env:              os.Getenv("APP_ENV"),
 		DaDataToken:      os.Getenv("DADATA_TOKEN"),
+		MetricsToken:     os.Getenv("METRICS_TOKEN"),
 
 		S3Endpoint:  os.Getenv("S3_ENDPOINT"),
 		S3Region:    os.Getenv("S3_REGION"),

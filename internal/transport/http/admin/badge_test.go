@@ -46,3 +46,12 @@ func TestMarkUnknownToneFallsBackToNeutral(t *testing.T) {
 	require.Contains(t, got, "&lt;b&gt;текст&lt;/b&gt;")
 	require.NotContains(t, got, "onclick")
 }
+
+func TestBadgeAuditAction(t *testing.T) {
+	got := string(badge("audit_action", "meetup.cancel"))
+	require.Contains(t, got, "отмена митапа")
+	require.Contains(t, got, "badge-danger")
+
+	unknown := string(badge("audit_action", "future.action"))
+	require.Contains(t, unknown, "future.action", "новое действие показывается как есть")
+}

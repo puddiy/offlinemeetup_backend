@@ -40,6 +40,34 @@ var badgeCatalog = map[string]map[string]badgeSpec{
 		"admin":     {"админ", "accent"},
 		"moderator": {"модератор", "neutral"},
 	},
+	// Действия журнала (service.AuditAction*). Новое действие без подписи
+	// здесь покажется как есть — серым.
+	"audit_action": {
+		"admin.login":            {"вход", "neutral"},
+		"admin.logout":           {"выход", "neutral"},
+		"user.ban":               {"блокировка", "danger"},
+		"user.unban":             {"разблокировка", "success"},
+		"user.logout_all":        {"отзыв сессий", "warning"},
+		"user.delete":            {"удаление аккаунта", "danger"},
+		"user.avatar_remove":     {"снят аватар", "warning"},
+		"report.dismiss":         {"жалоба отклонена", "neutral"},
+		"meetup.cancel":          {"отмена митапа", "danger"},
+		"meetup.cover_remove":    {"снята обложка", "warning"},
+		"message.delete":         {"удаление сообщения", "danger"},
+		"tag.create":             {"новый тег", "accent"},
+		"tag.rename":             {"тег переименован", "accent"},
+		"tag.hide":               {"тег скрыт", "neutral"},
+		"tag.unhide":             {"тег возвращён", "neutral"},
+		"meetup.create_official": {"официальный митап", "accent"},
+		"meetup.update_official": {"правка официального", "accent"},
+	},
+	"audit_target": {
+		"user":       {"пользователь", "neutral"},
+		"meetup":     {"митап", "neutral"},
+		"report":     {"жалоба", "neutral"},
+		"tag":        {"тег", "neutral"},
+		"admin_user": {"админ", "neutral"},
+	},
 }
 
 // badgeTones — допустимые тона; совпадают с классами .badge-* в admin.css.

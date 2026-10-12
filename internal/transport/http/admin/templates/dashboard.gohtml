@@ -3,27 +3,94 @@
 <div class="page-header">
     <div>
         <h1>Дашборд</h1>
-        <p class="subtitle">Метрики появятся в следующем милстоуне, а пока — быстрый переход к разделам.</p>
+        {{with .Data}}<p class="subtitle">Цифры на {{dt .Stats.Snapshot.GeneratedAt}} и обновляются раз в несколько минут. Жалобы и действия — в реальном времени.</p>{{end}}
     </div>
 </div>
-<div class="grid-tiles">
-    <a class="card tile" href="/admin/reports">
-        <h2>Жалобы</h2>
-        <p class="muted">Очередь модерации: открытые жалобы, от старых к новым.</p>
+{{with .Data}}
+{{$s := .Stats.Snapshot}}
+<div class="grid-stats">
+    <a class="card stat{{if .Stats.OpenReports}} stat-alert{{end}}" href="/admin/reports">
+        <span class="stat-label">Открытые жалобы</span>
+        <span class="stat-value">{{num .Stats.OpenReports}}</span>
+        <span class="stat-hint">{{if .Stats.OldestOpenReportAt}}самая старая с {{dt .Stats.OldestOpenReportAt}}{{else}}очередь пуста{{end}}</span>
     </a>
-    <a class="card tile" href="/admin/users">
-        <h2>Пользователи</h2>
-        <p class="muted">Поиск, блокировка, отзыв сессий, удаление аккаунта.</p>
-    </a>
-    <a class="card tile" href="/admin/meetups">
-        <h2>Митапы</h2>
-        <p class="muted">Все митапы, отмена, официальные встречи от «Meetuper».</p>
-    </a>
-    {{if eq (printf "%s" .Admin.Role) "admin"}}
-    <a class="card tile" href="/admin/tags">
-        <h2>Теги</h2>
-        <p class="muted">Справочник интересов: добавить, переименовать, скрыть.</p>
-    </a>
+    <div class="card stat">
+        <span class="stat-label">Пользователи</span>
+        <span class="stat-value">{{num $s.UsersTotal}}</span>
+        <span class="stat-hint">+{{num $s.NewUsers7d}} за 7 дней · заблокировано {{num $s.UsersBanned}}</span>
+    </div>
+    <div class="card stat">
+        <span class="stat-label">Активны за 24 часа</span>
+        <span class="stat-value">{{num $s.Active1d}}</span>
+        <span class="stat-hint">7 дней: {{num $s.Active7d}} · 30 дней: {{num $s.Active30d}}</span>
+    </div>
+    <div class="card stat">
+        <span class="stat-label">Активные митапы</span>
+        <span class="stat-value">{{num $s.MeetupsUpcoming}}</span>
+        <span class="stat-hint">официальных: {{num $s.MeetupsOfficialUpcoming}} · новых за 7 дней: {{num $s.NewMeetups7d}}</span>
+    </div>
+    <div class="card stat">
+        <span class="stat-label">Сообщения за 24 часа</span>
+        <span class="stat-value">{{num $s.Messages1d}}</span>
+        <span class="stat-hint">за 7 дней: {{num $s.Messages7d}}</span>
+    </div>
+</div>
+
+<h2 class="section-title">Динамика за 30 дней</h2>
+<div class="grid-charts">
+    {{range .Charts}}
+    <div class="card">
+        <div class="chart-head">
+            <h2>{{.Title}}</h2>
+            <span class="muted small">всего {{num .Series.Total}} · макс. {{num .Series.Max}} в день</span>
+        </div>
+        {{if .Chart.Empty}}
+        <p class="empty">Нет данных за 30 дней</p>
+        {{else}}
+        <svg class="chart-plot" viewBox="0 0 {{.Chart.Width}} {{.Chart.Height}}" preserveAspectRatio="none" role="img" aria-label="{{.Title}} по дням за 30 дней, всего {{.Series.Total}}">
+            {{range .Chart.Bars}}
+            <g class="bar">
+                <title>{{.Label}}: {{.Count}}</title>
+                <rect class="bar-hit" x="{{.SlotX}}" y="0" width="{{.SlotW}}" height="100%"/>
+                {{if .H}}<rect class="bar-fill" x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}" rx="2"/>{{end}}
+            </g>
+            {{end}}
+            <line class="chart-baseline" x1="0" y1="{{.Chart.Height}}" x2="{{.Chart.Width}}" y2="{{.Chart.Height}}" vector-effect="non-scaling-stroke"/>
+        </svg>
+        <div class="chart-axis" aria-hidden="true">{{range .Chart.Ticks}}<span>{{.}}</span>{{end}}</div>
+        <details class="chart-table">
+            <summary>Таблица</summary>
+            <table class="table">
+                <thead><tr><th>День</th><th class="num">Событий</th></tr></thead>
+                <tbody>
+                {{range .Chart.Bars}}<tr><td>{{.Label}}</td><td class="num">{{num .Count}}</td></tr>{{end}}
+                </tbody>
+            </table>
+        </details>
+        {{end}}
+    </div>
     {{end}}
 </div>
+
+<h2 class="section-title">Последние действия</h2>
+<div class="card card-flush">
+    {{if .Actions}}
+    <table class="table">
+        <thead><tr><th>Когда</th><th>Кто</th><th>Действие</th><th>Объект</th></tr></thead>
+        <tbody>
+        {{range .Actions}}
+        <tr>
+            <td class="nowrap">{{dt .CreatedAt}}</td>
+            <td>{{if .AdminEmail}}{{.AdminEmail}}{{else}}<span class="muted">удалённый админ</span>{{end}}</td>
+            <td>{{badge "audit_action" .Action}}</td>
+            <td class="nowrap">{{if .TargetType}}{{badge "audit_target" .TargetType}} {{if .Link}}<a href="{{.Link}}">#{{.TargetID}}</a>{{else}}#{{.TargetID}}{{end}}{{else}}<span class="muted">—</span>{{end}}</td>
+        </tr>
+        {{end}}
+        </tbody>
+    </table>
+    {{else}}
+    <p class="empty">Действий пока нет</p>
+    {{end}}
+</div>
+{{end}}
 {{end}}

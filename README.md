@@ -62,6 +62,8 @@ A separate circuit (own `admin_users` table, cookie session in Redis) for suppor
 
 Moderation: mobile clients report meetups, messages or users via `POST /v1/reports` (reasons come from `GET /v1/reports/reasons`). You can only report what you can see, and a hidden target returns the same 404 as a missing one; the limit is 10 reports per hour per user. Moderators work the queue at `/admin/reports`. Each report keeps a snapshot of the content at report time, and one action cancels the meetup, deletes the message (pushed to open chats as `messageDeleted`), or removes the avatar or cover from storage, closing every open report on that target in the same transaction as the audit entry. Banning or deleting an account cancels the user's upcoming and ongoing meetups; unbanning does not restore them.
 
+Dashboard (`/admin/`): live accounts, users active in the last 24 hours / 7 / 30 days, ongoing and upcoming meetups, messages, and the open report queue; daily charts of sign-ups, new meetups and messages for the last 30 days in `ADMIN_TIMEZONE`; the last 10 moderator actions from the audit log. "Active" means a refresh token was issued in the window — tokens rotate every 15 minutes of use, so it approximates app opens. Counters are cached for `CACHE_TTL_ADMIN_STATS` (default 5m); the report queue and the action feed are read live.
+
 ### Real-time chat (WebSocket)
 * Hub-and-client model: send / edit / delete messages, replies, read receipts, typing indicators.
 * **Horizontally scalable across instances** via Redis Pub/Sub fan-out — the database is the source of truth and clients backfill history over REST on reconnect.
@@ -163,6 +165,7 @@ ADMIN_SESSION_MAX_TTL=24h         # absolute cap from login time
 FILE_GC_INTERVAL=1h               # how often orphaned uploads are removed
 FILE_GC_MIN_AGE=24h               # an unreferenced upload must be this old before removal
 ADMIN_TIMEZONE=Europe/Moscow
+CACHE_TTL_ADMIN_STATS=5m          # how long dashboard counters are cached
 ```
 
 ### Running with Docker (recommended)

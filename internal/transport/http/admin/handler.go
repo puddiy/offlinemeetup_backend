@@ -52,6 +52,7 @@ type Deps struct {
 	Moderation ModerationSvc
 	Meetups    AdminMeetupSvc
 	Tags       AdminTagSvc
+	Stats      AdminStatsSvc
 	Geo        AddressSuggester
 	Audit      service.AuditRecorder
 	Render     *Renderer
@@ -66,6 +67,7 @@ type Handler struct {
 	moderation ModerationSvc
 	meetups    AdminMeetupSvc
 	tags       AdminTagSvc
+	stats      AdminStatsSvc
 	geo        AddressSuggester
 	audit      service.AuditRecorder
 	render     *Renderer
@@ -81,6 +83,7 @@ func NewHandler(d Deps) *Handler {
 		moderation: d.Moderation,
 		meetups:    d.Meetups,
 		tags:       d.Tags,
+		stats:      d.Stats,
 		geo:        d.Geo,
 		audit:      d.Audit,
 		render:     d.Render,

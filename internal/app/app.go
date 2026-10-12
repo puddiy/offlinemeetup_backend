@@ -101,6 +101,7 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 	}
 	auditRepo := repo.NewAuditRepo(db)
 	reportRepo := repo.NewReportRepo(db)
+	statsRepo := repo.NewStatsRepo(db)
 
 	// The presence of MAIL_SMTP_HOST decides, not APP_ENV: outside local/dev
 	// config.Load already refuses to start without the MAIL_SMTP_* secrets,
@@ -131,6 +132,7 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 	meetupCache := cache.NewMeetupCache(cached, cacheMetrics, cfg.CacheTTLMeetup)
 	meetupService := service.NewMeetupService(meetupRepo, chatCache, meetupCache, cfg.S3PublicURL)
 	tagCache := cache.NewTagCache(cached, cacheMetrics, cfg.CacheTTLTags)
+	adminStatsCache := cache.NewAdminStatsCache(cached, cacheMetrics, cfg.CacheTTLAdminStats)
 	tagService := service.NewTagService(tagRepo, tagCache)
 	geoService := service.NewGeoService(cfg.DaDataToken)
 	chatService := service.NewChatService(chatRepo, chatCache, cfg.S3PublicURL)
@@ -178,12 +180,14 @@ func New(log *slog.Logger, cfg *config.Config, db *bun.DB) *App {
 	}
 	adminTagService := service.NewAdminTagService(tagRepo, auditService, tagCache, log)
 	adminMeetupService := service.NewAdminMeetupService(meetupRepo, meetupService, auditService, systemUserID, cfg.S3PublicURL, log)
+	adminStatsService := service.NewAdminStatsService(statsRepo, adminStatsCache, cfg.AdminTimezone)
 	adminHandler := adminTransport.NewHandler(adminTransport.Deps{
 		Auth:       adminAuthService,
 		Users:      adminUserService,
 		Moderation: moderationService,
 		Meetups:    adminMeetupService,
 		Tags:       adminTagService,
+		Stats:      adminStatsService,
 		Geo:        geoService,
 		Audit:      auditService,
 		Render:     adminRenderer,

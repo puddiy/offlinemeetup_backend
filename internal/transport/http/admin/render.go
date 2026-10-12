@@ -7,6 +7,8 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/puddingtonnn/offlinemeetup_backend/internal/domain"
@@ -86,6 +88,25 @@ func (r *Renderer) formatDateTime(t time.Time) string { return t.In(r.loc).Forma
 // formatDate — «02.01.2006» в поясе админки.
 func (r *Renderer) formatDate(t time.Time) string { return t.In(r.loc).Format("02.01.2006") }
 
+// formatNum — целое с разрядами через неразрывный пробел: «12 345».
+// Неразрывный — чтобы число в узкой плитке не переносилось посередине.
+func formatNum(n int) string {
+	s := strconv.Itoa(n)
+	sign := ""
+	if n < 0 {
+		sign, s = "-", s[1:]
+	}
+
+	var b strings.Builder
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			b.WriteRune(' ')
+		}
+		b.WriteRune(c)
+	}
+	return sign + b.String()
+}
+
 // funcs — функции, доступные всем шаблонам и фрагментам.
 func (r *Renderer) funcs() template.FuncMap {
 	return template.FuncMap{
@@ -93,6 +114,7 @@ func (r *Renderer) funcs() template.FuncMap {
 		"mark":  mark,
 		"dt":    r.formatDateTime,
 		"date":  r.formatDate,
+		"num":   formatNum,
 	}
 }
 

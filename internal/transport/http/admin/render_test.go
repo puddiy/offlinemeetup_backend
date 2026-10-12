@@ -158,3 +158,17 @@ func TestTemplatesHaveNoInlineStyles(t *testing.T) {
 		require.NotContains(t, string(b), "<style", "блок <style> в %s — перенеси в static/admin.css", e.Name())
 	}
 }
+
+func TestFormatNum(t *testing.T) {
+	cases := map[int]string{
+		0:       "0",
+		999:     "999",
+		1000:    "1 000",
+		1234567: "1 234 567",
+		-1234:   "-1 234",
+		-100:    "-100",
+	}
+	for in, want := range cases {
+		require.Equal(t, want, formatNum(in), "formatNum(%d)", in)
+	}
+}

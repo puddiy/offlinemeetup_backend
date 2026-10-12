@@ -47,6 +47,10 @@ type Config struct {
 	CacheTTLProfile time.Duration
 	CacheTTLMeetup  time.Duration
 
+	// CacheTTLAdminStats — сколько живёт снапшот дашборда админки
+	// (CACHE_TTL_ADMIN_STATS, дефолт 5m).
+	CacheTTLAdminStats time.Duration
+
 	// PresenceTTL — срок жизни ключа присутствия в Redis; обновляется heartbeat'ом
 	// из writePump. Должен быть заметно больше pingPeriod (~54s), чтобы один
 	// пропущенный heartbeat не выкинул юзера в offline, но достаточно мал, чтобы
@@ -203,6 +207,7 @@ func Load() (*Config, error) {
 	cfg.CacheTTLTags = durEnv("CACHE_TTL_TAGS", time.Hour)
 	cfg.CacheTTLProfile = durEnv("CACHE_TTL_PROFILE", 10*time.Minute)
 	cfg.CacheTTLMeetup = durEnv("CACHE_TTL_MEETUP", 2*time.Minute)
+	cfg.CacheTTLAdminStats = durEnv("CACHE_TTL_ADMIN_STATS", 5*time.Minute)
 	cfg.PresenceTTL = durEnv("PRESENCE_TTL", 2*time.Minute)
 	cfg.MaxUploadSize = int64Env("MAX_UPLOAD_SIZE", 100<<20)
 	cfg.TrustProxyHeaders = os.Getenv("TRUST_PROXY_HEADERS") == "true"

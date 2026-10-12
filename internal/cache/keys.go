@@ -46,6 +46,10 @@ const (
 	// готовых к использованию сессий (тот же приём, что у refresh_tokens,
 	// где в БД лежит только хэш).
 	adminSessionPrefix = "admin:session:"
+
+	// adminStatsKey — снапшот дашборда админки. Один на всех: цифры не
+	// зависят от того, кто смотрит. v1 — версия формы dto.DashboardSnapshot.
+	adminStatsKey = "admin:stats:v1"
 )
 
 // UserChatsKey возвращает ключ со списком чатов пользователя.
@@ -148,4 +152,9 @@ func ResetAttemptsKey(email string) string {
 // от значения cookie; сырой токен в Redis не попадает никогда.
 func AdminSessionKey(tokenHash string) string {
 	return adminSessionPrefix + tokenHash
+}
+
+// AdminStatsKey — ключ снапшота дашборда админки.
+func AdminStatsKey() string {
+	return adminStatsKey
 }

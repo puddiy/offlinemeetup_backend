@@ -267,3 +267,18 @@ func TestLoad_MetricsToken(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "scrape-me", cfg.MetricsToken)
 }
+
+func TestLoad_AdminStatsTTL(t *testing.T) {
+	setRequiredSecrets(t)
+	t.Setenv("DB_DSN", "postgres://localhost/test")
+
+	t.Setenv("CACHE_TTL_ADMIN_STATS", "")
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, 5*time.Minute, cfg.CacheTTLAdminStats)
+
+	t.Setenv("CACHE_TTL_ADMIN_STATS", "30s")
+	cfg, err = Load()
+	require.NoError(t, err)
+	assert.Equal(t, 30*time.Second, cfg.CacheTTLAdminStats)
+}

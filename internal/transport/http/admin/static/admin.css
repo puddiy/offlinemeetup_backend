@@ -264,7 +264,7 @@ a.stat:hover { text-decoration: none; border-color: var(--line-strong); }
 .stat-alert { border-color: var(--warning); }
 .stat-alert .stat-value { color: var(--warning); }
 .section-title { margin: var(--s5) 0 var(--s3); }
-.grid-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--s4); }
+.grid-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: var(--s4); }
 .grid-charts > .card + .card { margin-top: 0; }
 .chart-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--s2); margin-bottom: var(--s3); }
 /* SVG растягивается по ширине карточки, высота фиксирована: подписи оси
